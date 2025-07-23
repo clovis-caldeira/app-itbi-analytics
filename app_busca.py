@@ -64,7 +64,7 @@ def buscar_dados(nome_rua: str, numero: str = None):
 
 # --- 3. INTERFACE GRÁFICA (UI) DA APLICAÇÃO ---
 
-st.title("🚀 Plataforma de Análise de Transações Imobiliárias (ITBI)")
+st.title("🚀 PrimeX -Plataforma de Análise de Transações Imobiliárias (ITBI)")
 
 st.header("1. Realize a busca no banco de dados")
 col1, col2 = st.columns(2)
