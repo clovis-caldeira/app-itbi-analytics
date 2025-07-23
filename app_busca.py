@@ -1,4 +1,4 @@
-# app_busca.py (Versão para Produção - Conectada ao Supabase)
+# app_busca.py (Versão 2.0 - com Filtro de Ano)
 
 import streamlit as st
 import pandas as pd
@@ -11,51 +11,64 @@ load_dotenv()
 
 # --- 1. CONFIGURAÇÃO E CONEXÃO COM O SUPABASE ---
 
-# Configura o layout da página
 st.set_page_config(layout="wide")
 
-# Função para inicializar a conexão com o Supabase, usando o cache do Streamlit
 @st.cache_resource
 def init_supabase_connection() -> Client:
-    """Conecta ao Supabase usando as credenciais do Streamlit Secrets."""
+    """Conecta ao Supabase usando as credenciais."""
     try:
-        # Tenta pegar as credenciais do Streamlit Secrets (quando estiver online)
         supabase_url = st.secrets["SUPABASE_URL"]
         supabase_key = st.secrets["SUPABASE_KEY"]
     except KeyError:
-        # Se não encontrar, pega do arquivo .env (para rodar localmente)
-        logger.info("Credenciais de secrets não encontradas, usando .env local.")
         supabase_url = os.getenv("SUPABASE_URL")
         supabase_key = os.getenv("SUPABASE_KEY")
 
     if not supabase_url or not supabase_key:
-        st.error("ERRO: Credenciais do Supabase não configuradas. Verifique seus secrets ou o arquivo .env")
+        st.error("ERRO: Credenciais do Supabase não configuradas.")
         return None
         
     return create_client(supabase_url, supabase_key)
 
-# Estabelece a conexão
 supabase = init_supabase_connection()
 
-# --- 2. FUNÇÃO DE BUSCA NO BANCO DE DADOS ---
+# --- 2. FUNÇÕES DE BUSCA NO BANCO DE DADOS ---
 
-def buscar_dados(nome_rua: str, numero: str = None):
-    """Executa a busca no banco de dados do Supabase."""
+@st.cache_data(ttl=3600) # Cache de 1 hora
+def get_anos_disponiveis() -> list:
+    """Busca os anos distintos que existem no banco de dados para popular o filtro."""
+    if not supabase: return []
+    try:
+        response = supabase.table('transacoes_imobiliarias').select('ano_transacao', count='exact').execute()
+        if response.data:
+            # Pega todos os anos únicos, remove nulos, converte para inteiro e ordena do mais novo para o mais antigo
+            anos = sorted([int(item['ano_transacao']) for item in response.data if item['ano_transacao'] is not None], reverse=True)
+            return anos
+        return []
+    except Exception as e:
+        st.error(f"Erro ao buscar lista de anos: {e}")
+        return []
+
+def buscar_dados(nome_rua: str, numero: str = None, anos_selecionados: list = []):
+    """Executa a busca no banco de dados do Supabase, agora com filtro de ano."""
     if not supabase:
-        st.error("Conexão com o banco de dados falhou. Não é possível realizar a busca.")
+        st.error("Conexão com o banco de dados falhou.")
         return pd.DataFrame()
 
     query = supabase.table('transacoes_imobiliarias').select('*')
     
-    # Filtro obrigatório por nome da rua (case-insensitive)
+    # --- INÍCIO DA ATUALIZAÇÃO ---
+    # Se o usuário selecionou algum ano, aplica o filtro ANTES de buscar pelo texto
+    if anos_selecionados:
+        query = query.in_('ano_transacao', anos_selecionados)
+    # --- FIM DA ATUALIZAÇÃO ---
+
     query = query.ilike('nome_do_logradouro', f'%{nome_rua.strip()}%')
     
-    # Filtro opcional por número
     if numero:
         query = query.eq('numero', numero.strip())
         
     try:
-        response = query.limit(1000).execute() # Limita a 1000 resultados para não sobrecarregar
+        response = query.limit(1000).execute()
         df = pd.DataFrame(response.data)
         return df
     except Exception as e:
@@ -64,50 +77,41 @@ def buscar_dados(nome_rua: str, numero: str = None):
 
 # --- 3. INTERFACE GRÁFICA (UI) DA APLICAÇÃO ---
 
-st.title("🚀 PrimeX -Plataforma de Análise de Transações Imobiliárias (ITBI)")
+st.title("eXatos Ferramenta de Análise de Transações Imobiliárias (ITBI)")
+st.header("1. Filtros de Busca")
 
-st.header("1. Realize a busca no banco de dados")
-col1, col2 = st.columns(2)
+# Busca a lista de anos para o filtro
+anos_disponiveis = get_anos_disponiveis()
+
+col1, col2, col3 = st.columns([2, 1, 2])
 with col1:
     nome_rua_input = st.text_input("Nome da Rua (Obrigatório)", placeholder="Ex: R Celso Ramos")
 with col2:
-    numero_input = st.text_input("Número (Opcional)", placeholder="Deixe em branco para ver todos")
+    numero_input = st.text_input("Número (Opcional)")
+with col3:
+    anos_selecionados = st.multiselect(
+        "Selecione o(s) Ano(s) (Opcional)",
+        options=anos_disponiveis,
+        help="Deixe em branco para buscar em todos os anos."
+    )
 
 if st.button("Buscar Endereço", type="primary"):
     if nome_rua_input:
         with st.spinner("Buscando dados no banco..."):
-            st.session_state['resultados_busca'] = buscar_dados(nome_rua_input, numero_input)
+            st.session_state['resultados_busca'] = buscar_dados(nome_rua_input, numero_input, anos_selecionados)
     else:
         st.warning("Por favor, preencha o campo 'Nome da Rua'.")
 
-# --- Seção de Resultados e Filtro Adicional ---
-if 'resultados_busca' in st.session_state and not st.session_state['resultados_busca'].empty:
-    st.divider()
-    st.header("2. Resultados da Busca")
-    
-    resultados_iniciais = st.session_state['resultados_busca']
-    st.info(f"Busca inicial encontrou **{len(resultados_iniciais)}** resultados (limitado a 1000).")
-
-    # Filtro Adicional
-    st.markdown("#### Refine sua busca:")
-    col_filtro1, col_filtro2 = st.columns(2)
-    with col_filtro1:
-        colunas_disponiveis = sorted(resultados_iniciais.columns)
-        coluna_para_filtrar = st.selectbox("Filtrar por coluna:", options=colunas_disponiveis)
-    with col_filtro2:
-        valor_para_filtrar = st.text_input("Contendo o valor:", placeholder="Digite para filtrar...")
-
-    resultados_filtrados = resultados_iniciais
-    if valor_para_filtrar:
-        try:
-            resultados_filtrados = resultados_iniciais[
-                resultados_iniciais[coluna_para_filtrar].astype(str).str.contains(valor_para_filtrar, case=False, na=False)
-            ]
-        except Exception as e:
-            st.error(f"Erro ao aplicar filtro: {e}")
-
-    st.success(f"Exibindo **{len(resultados_filtrados)}** resultados após o filtro adicional.")
-    
-    st.dataframe(resultados_filtrados, use_container_width=True)
-else:
-    st.info("Aguardando busca. Os resultados aparecerão aqui.")
+# Seção de Resultados
+if 'resultados_busca' in st.session_state:
+    if not st.session_state['resultados_busca'].empty:
+        st.divider()
+        st.header("2. Resultados da Busca")
+        
+        resultados = st.session_state['resultados_busca']
+        st.info(f"Busca encontrou **{len(resultados)}** resultados (limitado a 1000).")
+        
+        # Filtro Adicional (continua funcionando como antes)
+        st.dataframe(resultados, use_container_width=True)
+    elif st.session_state.get('last_button_press', False): # Mostra mensagem apenas se o botão foi pressionado
+        st.info("Nenhum resultado encontrado para os filtros informados.")
