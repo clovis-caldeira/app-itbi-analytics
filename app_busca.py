@@ -1,11 +1,11 @@
-# app_busca.py (Versão 2.3 - com Busca Inteligente de Endereços)
+# app_busca.py (Versão 2.5 - com Título Atualizado e Formatação de Moeda)
 
 import streamlit as st
 import pandas as pd
 from supabase import create_client, Client
 import os
 from dotenv import load_dotenv
-import unicodedata # Biblioteca para lidar com acentos
+import unicodedata
 
 # Carrega variáveis de ambiente do arquivo .env (APENAS PARA TESTE LOCAL)
 load_dotenv()
@@ -34,43 +34,25 @@ supabase = init_supabase_connection()
 
 # --- 2. FUNÇÕES DE BUSCA E NORMALIZAÇÃO ---
 
-# --- INÍCIO DA ATUALIZAÇÃO ---
-
 def normalizar_busca(texto_busca: str) -> str:
-    """
-    Prepara o texto de busca do usuário para ser compatível com o banco de dados.
-    1. Remove acentos.
-    2. Converte para minúsculas.
-    3. Substitui abreviações comuns.
-    """
+    """Prepara o texto de busca do usuário para ser compatível com o banco de dados."""
     if not texto_busca:
         return ""
         
-    # Remove acentos
     texto_sem_acento = ''.join(c for c in unicodedata.normalize('NFD', texto_busca) if unicodedata.category(c) != 'Mn')
-    
-    # Converte para minúsculas
     texto_lower = texto_sem_acento.lower()
     
-    # Dicionário de substituições
     substituicoes = {
-        'rua ': 'r ',
-        'avenida ': 'av ',
-        'estrada ': 'est ',
-        'travessa ': 'tv ',
-        'praca ': 'pca ', # Praça
-        'largo ': 'lgo '
+        'rua ': 'r ', 'avenida ': 'av ', 'estrada ': 'est ',
+        'travessa ': 'tv ', 'praca ': 'pca ', 'largo ': 'lgo '
     }
     
-    # Aplica as substituições
     for chave, valor in substituicoes.items():
         if texto_lower.startswith(chave):
-            texto_lower = texto_lower.replace(chave, valor, 1) # Substitui apenas a primeira ocorrência
-            break # Para após a primeira substituição encontrada
+            texto_lower = texto_lower.replace(chave, valor, 1)
+            break
             
     return texto_lower.strip()
-
-# --- FIM DA ATUALIZAÇÃO ---
 
 
 @st.cache_data(ttl=3600)
@@ -88,22 +70,18 @@ def get_anos_disponiveis() -> list:
         return []
 
 def buscar_dados(nome_rua: str, numero: str = None, anos_selecionados: list = []):
-    """Executa a busca no banco de dados, agora usando a busca normalizada."""
+    """Executa a busca no banco de dados, usando a busca normalizada."""
     if not supabase:
         st.error("Conexão com o banco de dados falhou.")
         return pd.DataFrame()
 
-    # --- INÍCIO DA ATUALIZAÇÃO ---
-    # Normaliza o input do usuário antes de enviar para o banco
     rua_normalizada = normalizar_busca(nome_rua)
-    # --- FIM DA ATUALIZAÇÃO ---
 
     query = supabase.table('transacoes_imobiliarias').select('*')
     
     if anos_selecionados:
         query = query.in_('ano_transacao', anos_selecionados)
 
-    # A busca agora é feita com o texto normalizado
     query = query.ilike('nome_do_logradouro', f'%{rua_normalizada}%')
     
     if numero:
@@ -119,7 +97,10 @@ def buscar_dados(nome_rua: str, numero: str = None, anos_selecionados: list = []
 
 # --- 3. INTERFACE GRÁFICA (UI) DA APLICAÇÃO ---
 
-st.title("eXatos ITBI - Ferramenta de Análise Imobiliárias")
+# --- INÍCIO DA ATUALIZAÇÃO ---
+st.title("eXatas ITBI - Ferramenta de Análise Imobiliária")
+# --- FIM DA ATUALIZAÇÃO ---
+
 st.header("1. Filtros de Busca")
 
 anos_disponiveis = get_anos_disponiveis()
@@ -145,7 +126,7 @@ if st.button("Buscar Endereço", type="primary"):
         st.warning("Por favor, preencha o campo 'Nome da Rua'.")
         st.session_state['last_button_press'] = False
 
-# Seção de Resultados e Filtro Adicional
+# --- Seção de Resultados e Filtro Adicional ---
 if 'resultados_busca' in st.session_state:
     resultados_iniciais = st.session_state['resultados_busca']
     
@@ -175,7 +156,17 @@ if 'resultados_busca' in st.session_state:
                 st.error(f"Erro ao aplicar filtro: {e}")
 
         st.success(f"Exibindo **{len(resultados_filtrados)}** resultados após o filtro adicional.")
-        st.dataframe(resultados_filtrados, use_container_width=True)
+        
+        df_para_exibir = resultados_filtrados.copy()
+        coluna_valor = 'valor_de_transacao_declarado_pelo_contribuinte'
+        
+        if coluna_valor in df_para_exibir.columns:
+            df_para_exibir[coluna_valor] = pd.to_numeric(df_para_exibir[coluna_valor], errors='coerce')
+            df_para_exibir[coluna_valor] = df_para_exibir[coluna_valor].apply(
+                lambda x: f'R$ {x:,.2f}'.replace(",", "X").replace(".", ",").replace("X", ".") if pd.notnull(x) else "N/A"
+            )
+        
+        st.dataframe(df_para_exibir, use_container_width=True)
 
     elif st.session_state.get('last_button_press', False):
         st.info("Nenhum resultado encontrado para os filtros informados.")
