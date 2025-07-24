@@ -1,10 +1,11 @@
-# app_busca.py (Versão 2.2 - com Filtro Dinâmico nos Resultados)
+# app_busca.py (Versão 2.3 - com Busca Inteligente de Endereços)
 
 import streamlit as st
 import pandas as pd
 from supabase import create_client, Client
 import os
 from dotenv import load_dotenv
+import unicodedata # Biblioteca para lidar com acentos
 
 # Carrega variáveis de ambiente do arquivo .env (APENAS PARA TESTE LOCAL)
 load_dotenv()
@@ -31,9 +32,48 @@ def init_supabase_connection() -> Client:
 
 supabase = init_supabase_connection()
 
-# --- 2. FUNÇÕES DE BUSCA NO BANCO DE DADOS ---
+# --- 2. FUNÇÕES DE BUSCA E NORMALIZAÇÃO ---
 
-@st.cache_data(ttl=3600) # Cache de 1 hora
+# --- INÍCIO DA ATUALIZAÇÃO ---
+
+def normalizar_busca(texto_busca: str) -> str:
+    """
+    Prepara o texto de busca do usuário para ser compatível com o banco de dados.
+    1. Remove acentos.
+    2. Converte para minúsculas.
+    3. Substitui abreviações comuns.
+    """
+    if not texto_busca:
+        return ""
+        
+    # Remove acentos
+    texto_sem_acento = ''.join(c for c in unicodedata.normalize('NFD', texto_busca) if unicodedata.category(c) != 'Mn')
+    
+    # Converte para minúsculas
+    texto_lower = texto_sem_acento.lower()
+    
+    # Dicionário de substituições
+    substituicoes = {
+        'rua ': 'r ',
+        'avenida ': 'av ',
+        'estrada ': 'est ',
+        'travessa ': 'tv ',
+        'praca ': 'pca ', # Praça
+        'largo ': 'lgo '
+    }
+    
+    # Aplica as substituições
+    for chave, valor in substituicoes.items():
+        if texto_lower.startswith(chave):
+            texto_lower = texto_lower.replace(chave, valor, 1) # Substitui apenas a primeira ocorrência
+            break # Para após a primeira substituição encontrada
+            
+    return texto_lower.strip()
+
+# --- FIM DA ATUALIZAÇÃO ---
+
+
+@st.cache_data(ttl=3600)
 def get_anos_disponiveis() -> list:
     """Busca os anos distintos chamando a função RPC no Supabase."""
     if not supabase: return []
@@ -48,17 +88,23 @@ def get_anos_disponiveis() -> list:
         return []
 
 def buscar_dados(nome_rua: str, numero: str = None, anos_selecionados: list = []):
-    """Executa a busca no banco de dados do Supabase, com filtro de ano otimizado."""
+    """Executa a busca no banco de dados, agora usando a busca normalizada."""
     if not supabase:
         st.error("Conexão com o banco de dados falhou.")
         return pd.DataFrame()
+
+    # --- INÍCIO DA ATUALIZAÇÃO ---
+    # Normaliza o input do usuário antes de enviar para o banco
+    rua_normalizada = normalizar_busca(nome_rua)
+    # --- FIM DA ATUALIZAÇÃO ---
 
     query = supabase.table('transacoes_imobiliarias').select('*')
     
     if anos_selecionados:
         query = query.in_('ano_transacao', anos_selecionados)
 
-    query = query.ilike('nome_do_logradouro', f'%{nome_rua.strip()}%')
+    # A busca agora é feita com o texto normalizado
+    query = query.ilike('nome_do_logradouro', f'%{rua_normalizada}%')
     
     if numero:
         query = query.eq('numero', numero.strip())
@@ -80,7 +126,7 @@ anos_disponiveis = get_anos_disponiveis()
 
 col1, col2, col3 = st.columns([2, 1, 2])
 with col1:
-    nome_rua_input = st.text_input("Nome da Rua (Obrigatório)", placeholder="Ex: R Celso Ramos")
+    nome_rua_input = st.text_input("Nome da Rua (Obrigatório)", placeholder="Ex: Rua Celso Ramos ou Av Paulista")
 with col2:
     numero_input = st.text_input("Número (Opcional)")
 with col3:
@@ -99,7 +145,7 @@ if st.button("Buscar Endereço", type="primary"):
         st.warning("Por favor, preencha o campo 'Nome da Rua'.")
         st.session_state['last_button_press'] = False
 
-# --- Seção de Resultados e Filtro Adicional ---
+# Seção de Resultados e Filtro Adicional
 if 'resultados_busca' in st.session_state:
     resultados_iniciais = st.session_state['resultados_busca']
     
@@ -109,38 +155,26 @@ if 'resultados_busca' in st.session_state:
         
         st.info(f"Busca inicial encontrou **{len(resultados_iniciais)}** resultados (limitado a 1000).")
         
-        # --- INÍCIO DO FILTRO ADICIONAL ---
         st.markdown("#### Refine sua busca:")
         col_filtro1, col_filtro2 = st.columns(2)
         
         with col_filtro1:
-            # Oferece todas as colunas do resultado como opção de filtro, em ordem alfabética
             colunas_disponiveis = sorted(resultados_iniciais.columns)
-            coluna_para_filtrar = st.selectbox(
-                "Filtrar por coluna:",
-                options=colunas_disponiveis
-            )
+            coluna_para_filtrar = st.selectbox("Filtrar por coluna:", options=colunas_disponiveis)
         
         with col_filtro2:
-            valor_para_filtrar = st.text_input(
-                "Contendo o valor:",
-                placeholder="Digite para filtrar os resultados abaixo..."
-            )
+            valor_para_filtrar = st.text_input("Contendo o valor:", placeholder="Digite para filtrar os resultados abaixo...")
 
-        # Lógica para aplicar o filtro dinâmico
         resultados_filtrados = resultados_iniciais
         if valor_para_filtrar:
             try:
-                # Converte a coluna para texto para garantir que a busca funcione em números e datas
                 resultados_filtrados = resultados_iniciais[
                     resultados_iniciais[coluna_para_filtrar].astype(str).str.contains(valor_para_filtrar, case=False, na=False)
                 ]
             except Exception as e:
                 st.error(f"Erro ao aplicar filtro: {e}")
-        # --- FIM DO FILTRO ADICIONAL ---
 
         st.success(f"Exibindo **{len(resultados_filtrados)}** resultados após o filtro adicional.")
-        
         st.dataframe(resultados_filtrados, use_container_width=True)
 
     elif st.session_state.get('last_button_press', False):
