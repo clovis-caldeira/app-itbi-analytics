@@ -78,7 +78,7 @@ def buscar_dados(nome_rua: str, numero: str = None, anos_selecionados: list = []
 
 # --- 3. INTERFACE GRÁFICA (UI) DA APLICAÇÃO ---
 
-st.title("eXatos - Ferramentade Análise de Transações Imobiliárias (ITBI)")
+st.title("eXatos ITBI - Ferramenta de Análise de Transações Imobiliárias")
 st.header("1. Filtros de Busca")
 
 # Busca a lista de anos para o filtro
