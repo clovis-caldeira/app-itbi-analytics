@@ -1,4 +1,4 @@
-# app_busca.py (Versão 2.0 - com Filtro de Ano)
+# app_busca.py (Versão 2.1 - Otimizada com RPC para Filtro de Ano)
 
 import streamlit as st
 import pandas as pd
@@ -35,13 +35,17 @@ supabase = init_supabase_connection()
 
 @st.cache_data(ttl=3600) # Cache de 1 hora
 def get_anos_disponiveis() -> list:
-    """Busca os anos distintos que existem no banco de dados para popular o filtro."""
+    """Busca os anos distintos chamando a função RPC no Supabase."""
     if not supabase: return []
     try:
-        response = supabase.table('transacoes_imobiliarias').select('ano_transacao', count='exact').execute()
+        # --- INÍCIO DA ATUALIZAÇÃO ---
+        # Chama a função 'get_distinct_anos' que criamos no banco de dados.
+        # É muito mais rápido e eficiente.
+        response = supabase.rpc('get_distinct_anos', {}).execute()
+        # --- FIM DA ATUALIZAÇÃO ---
+        
         if response.data:
-            # Pega todos os anos únicos, remove nulos, converte para inteiro e ordena do mais novo para o mais antigo
-            anos = sorted([int(item['ano_transacao']) for item in response.data if item['ano_transacao'] is not None], reverse=True)
+            anos = [item['ano'] for item in response.data]
             return anos
         return []
     except Exception as e:
@@ -49,18 +53,15 @@ def get_anos_disponiveis() -> list:
         return []
 
 def buscar_dados(nome_rua: str, numero: str = None, anos_selecionados: list = []):
-    """Executa a busca no banco de dados do Supabase, agora com filtro de ano."""
+    """Executa a busca no banco de dados do Supabase, com filtro de ano otimizado."""
     if not supabase:
         st.error("Conexão com o banco de dados falhou.")
         return pd.DataFrame()
 
     query = supabase.table('transacoes_imobiliarias').select('*')
     
-    # --- INÍCIO DA ATUALIZAÇÃO ---
-    # Se o usuário selecionou algum ano, aplica o filtro ANTES de buscar pelo texto
     if anos_selecionados:
         query = query.in_('ano_transacao', anos_selecionados)
-    # --- FIM DA ATUALIZAÇÃO ---
 
     query = query.ilike('nome_do_logradouro', f'%{nome_rua.strip()}%')
     
@@ -77,7 +78,7 @@ def buscar_dados(nome_rua: str, numero: str = None, anos_selecionados: list = []
 
 # --- 3. INTERFACE GRÁFICA (UI) DA APLICAÇÃO ---
 
-st.title("eXatos Ferramenta de Análise de Transações Imobiliárias (ITBI)")
+st.title("eXatos - Ferramentade Análise de Transações Imobiliárias (ITBI)")
 st.header("1. Filtros de Busca")
 
 # Busca a lista de anos para o filtro
@@ -99,19 +100,23 @@ if st.button("Buscar Endereço", type="primary"):
     if nome_rua_input:
         with st.spinner("Buscando dados no banco..."):
             st.session_state['resultados_busca'] = buscar_dados(nome_rua_input, numero_input, anos_selecionados)
+            st.session_state['last_button_press'] = True # Controla a mensagem de "nenhum resultado"
     else:
         st.warning("Por favor, preencha o campo 'Nome da Rua'.")
+        st.session_state['last_button_press'] = False
 
 # Seção de Resultados
 if 'resultados_busca' in st.session_state:
-    if not st.session_state['resultados_busca'].empty:
+    resultados = st.session_state['resultados_busca']
+    if not resultados.empty:
         st.divider()
         st.header("2. Resultados da Busca")
         
-        resultados = st.session_state['resultados_busca']
         st.info(f"Busca encontrou **{len(resultados)}** resultados (limitado a 1000).")
         
-        # Filtro Adicional (continua funcionando como antes)
+        # Filtro Adicional (Opcional)
+        # st.dataframe(resultados, use_container_width=True) # Descomente se quiser um filtro adicional
         st.dataframe(resultados, use_container_width=True)
-    elif st.session_state.get('last_button_press', False): # Mostra mensagem apenas se o botão foi pressionado
+
+    elif st.session_state.get('last_button_press', False):
         st.info("Nenhum resultado encontrado para os filtros informados.")
