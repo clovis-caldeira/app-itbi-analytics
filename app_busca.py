@@ -1,4 +1,4 @@
-# app_busca.py (Versão 2.1 - Otimizada com RPC para Filtro de Ano)
+# app_busca.py (Versão 2.2 - com Filtro Dinâmico nos Resultados)
 
 import streamlit as st
 import pandas as pd
@@ -38,12 +38,7 @@ def get_anos_disponiveis() -> list:
     """Busca os anos distintos chamando a função RPC no Supabase."""
     if not supabase: return []
     try:
-        # --- INÍCIO DA ATUALIZAÇÃO ---
-        # Chama a função 'get_distinct_anos' que criamos no banco de dados.
-        # É muito mais rápido e eficiente.
         response = supabase.rpc('get_distinct_anos', {}).execute()
-        # --- FIM DA ATUALIZAÇÃO ---
-        
         if response.data:
             anos = [item['ano'] for item in response.data]
             return anos
@@ -78,10 +73,9 @@ def buscar_dados(nome_rua: str, numero: str = None, anos_selecionados: list = []
 
 # --- 3. INTERFACE GRÁFICA (UI) DA APLICAÇÃO ---
 
-st.title("eXatos ITBI - Ferramenta de Análise de Transações Imobiliárias")
+st.title("eXatos ITBI - Ferramenta de Análise Imobiliárias")
 st.header("1. Filtros de Busca")
 
-# Busca a lista de anos para o filtro
 anos_disponiveis = get_anos_disponiveis()
 
 col1, col2, col3 = st.columns([2, 1, 2])
@@ -100,23 +94,54 @@ if st.button("Buscar Endereço", type="primary"):
     if nome_rua_input:
         with st.spinner("Buscando dados no banco..."):
             st.session_state['resultados_busca'] = buscar_dados(nome_rua_input, numero_input, anos_selecionados)
-            st.session_state['last_button_press'] = True # Controla a mensagem de "nenhum resultado"
+            st.session_state['last_button_press'] = True
     else:
         st.warning("Por favor, preencha o campo 'Nome da Rua'.")
         st.session_state['last_button_press'] = False
 
-# Seção de Resultados
+# --- Seção de Resultados e Filtro Adicional ---
 if 'resultados_busca' in st.session_state:
-    resultados = st.session_state['resultados_busca']
-    if not resultados.empty:
+    resultados_iniciais = st.session_state['resultados_busca']
+    
+    if not resultados_iniciais.empty:
         st.divider()
         st.header("2. Resultados da Busca")
         
-        st.info(f"Busca encontrou **{len(resultados)}** resultados (limitado a 1000).")
+        st.info(f"Busca inicial encontrou **{len(resultados_iniciais)}** resultados (limitado a 1000).")
         
-        # Filtro Adicional (Opcional)
-        # st.dataframe(resultados, use_container_width=True) # Descomente se quiser um filtro adicional
-        st.dataframe(resultados, use_container_width=True)
+        # --- INÍCIO DO FILTRO ADICIONAL ---
+        st.markdown("#### Refine sua busca:")
+        col_filtro1, col_filtro2 = st.columns(2)
+        
+        with col_filtro1:
+            # Oferece todas as colunas do resultado como opção de filtro, em ordem alfabética
+            colunas_disponiveis = sorted(resultados_iniciais.columns)
+            coluna_para_filtrar = st.selectbox(
+                "Filtrar por coluna:",
+                options=colunas_disponiveis
+            )
+        
+        with col_filtro2:
+            valor_para_filtrar = st.text_input(
+                "Contendo o valor:",
+                placeholder="Digite para filtrar os resultados abaixo..."
+            )
+
+        # Lógica para aplicar o filtro dinâmico
+        resultados_filtrados = resultados_iniciais
+        if valor_para_filtrar:
+            try:
+                # Converte a coluna para texto para garantir que a busca funcione em números e datas
+                resultados_filtrados = resultados_iniciais[
+                    resultados_iniciais[coluna_para_filtrar].astype(str).str.contains(valor_para_filtrar, case=False, na=False)
+                ]
+            except Exception as e:
+                st.error(f"Erro ao aplicar filtro: {e}")
+        # --- FIM DO FILTRO ADICIONAL ---
+
+        st.success(f"Exibindo **{len(resultados_filtrados)}** resultados após o filtro adicional.")
+        
+        st.dataframe(resultados_filtrados, use_container_width=True)
 
     elif st.session_state.get('last_button_press', False):
         st.info("Nenhum resultado encontrado para os filtros informados.")
