@@ -130,7 +130,7 @@ with st.sidebar:
     # --- FIM DA ATUALIZAÇÃO ---
 
 # --- PÁGINA PRINCIPAL ---
-st.title("eXatas ITBI")
+st.title("eXatos ITBI")
 st.markdown("##### Ferramenta de Análise do Mercado Imobiliário")
 st.divider()
 
