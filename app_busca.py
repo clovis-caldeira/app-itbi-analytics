@@ -12,7 +12,7 @@ import re
 
 st.set_page_config(
     layout="wide",
-    page_title="eXatas ITBI - Análise Imobiliária",
+    page_title="eXatos ITBI - Análise Imobiliária",
     page_icon="assets/icon.png"
 )
 
