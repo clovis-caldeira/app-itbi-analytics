@@ -1,4 +1,4 @@
-# app_busca.py (Versão 3.0 - UI/UX Profissional)
+# app_busca.py (Versão 3.1 - Responsivo e com Busca por CEP)
 
 import streamlit as st
 import pandas as pd
@@ -6,14 +6,14 @@ from supabase import create_client, Client
 import os
 from dotenv import load_dotenv
 import unicodedata
+import re
 
 # --- 0. CONFIGURAÇÃO INICIAL DA PÁGINA ---
 
-# Configura o layout da página, o título na aba do navegador e o ícone
 st.set_page_config(
     layout="wide",
     page_title="eXatas ITBI - Análise Imobiliária",
-    page_icon="assets/icon.png" # Caminho para o seu ícone
+    page_icon="assets/icon.png"
 )
 
 # --- 1. FUNÇÕES DE CONEXÃO E BUSCA ---
@@ -63,19 +63,31 @@ def get_anos_disponiveis(_supabase_client) -> list:
         return []
 
 @st.cache_data(ttl=600)
-def buscar_dados(_supabase_client, nome_rua: str, numero: str = None, anos_selecionados: list = []):
-    """Executa a busca no banco de dados do Supabase."""
+def buscar_dados(_supabase_client, nome_rua: str = None, cep: str = None, numero: str = None, anos_selecionados: list = []):
+    """Executa a busca no banco de dados, agora com filtro de CEP."""
     if not _supabase_client:
         st.error("Conexão com o banco de dados falhou.")
         return pd.DataFrame()
 
-    rua_normalizada = normalizar_busca(nome_rua)
     query = _supabase_client.table('transacoes_imobiliarias').select('*')
+    
+    # --- INÍCIO DA ATUALIZAÇÃO: Lógica de Filtros ---
     if anos_selecionados:
         query = query.in_('ano_transacao', anos_selecionados)
+
+    if cep:
+        # Limpa o CEP para conter apenas números
+        cep_limpo = re.sub(r'\D', '', cep)
+        if cep_limpo:
+            query = query.eq('cep', int(cep_limpo))
+    
+    if nome_rua:
+        rua_normalizada = normalizar_busca(nome_rua)
+        query = query.ilike('nome_do_logradouro', f'%{rua_normalizada}%')
+    
     if numero:
         query = query.eq('numero', numero.strip())
-    query = query.ilike('nome_do_logradouro', f'%{rua_normalizada}%')
+    # --- FIM DA ATUALIZAÇÃO ---
         
     try:
         response = query.limit(1000).execute()
@@ -89,28 +101,33 @@ def buscar_dados(_supabase_client, nome_rua: str, numero: str = None, anos_selec
 
 # --- BARRA LATERAL (SIDEBAR) PARA FILTROS ---
 with st.sidebar:
-    # Adicione seu logo aqui, se tiver um. Ex: st.image("assets/logo.png")
     st.header("🔍 Filtros de Busca")
 
     anos_disponiveis = get_anos_disponiveis(supabase)
 
+    # --- INÍCIO DA ATUALIZAÇÃO: Novos Filtros ---
+    st.markdown("**Buscar por Endereço**")
     nome_rua_input = st.text_input(
         "Nome do Logradouro",
         placeholder="Ex: Av Paulista",
-        help="Digite o nome da rua, avenida, etc. A busca corrige abreviações e acentos."
+        help="A busca corrige abreviações (Rua -> R) e acentos."
     )
     
-    col1, col2 = st.columns(2)
-    with col1:
-        numero_input = st.text_input("Número", placeholder="(Opcional)")
-    with col2:
-        anos_selecionados = st.multiselect(
-            "Ano(s)",
-            options=anos_disponiveis,
-            placeholder="Todos"
-        )
+    numero_input = st.text_input("Número", placeholder="(Opcional)")
+
+    st.markdown("---")
+    st.markdown("**ou Buscar por CEP**")
+    cep_input = st.text_input("CEP", placeholder="Ex: 01311-000")
     
-    buscar_btn = st.button("Buscar Endereço", type="primary", use_container_width=True)
+    st.markdown("---")
+    anos_selecionados = st.multiselect(
+        "Filtrar por Ano(s)",
+        options=anos_disponiveis,
+        placeholder="Todos os anos"
+    )
+    
+    buscar_btn = st.button("Buscar", type="primary", use_container_width=True)
+    # --- FIM DA ATUALIZAÇÃO ---
 
 # --- PÁGINA PRINCIPAL ---
 st.title("eXatas ITBI")
@@ -119,12 +136,13 @@ st.divider()
 
 # Lógica para executar a busca quando o botão for clicado
 if buscar_btn:
-    if nome_rua_input:
+    # A busca agora roda se a rua OU o CEP forem preenchidos
+    if nome_rua_input or cep_input:
         with st.spinner("Buscando dados no banco..."):
-            st.session_state['resultados_busca'] = buscar_dados(supabase, nome_rua_input, numero_input, anos_selecionados)
+            st.session_state['resultados_busca'] = buscar_dados(supabase, nome_rua_input, cep_input, numero_input, anos_selecionados)
             st.session_state['last_search_executed'] = True
     else:
-        st.warning("Por favor, preencha o campo 'Nome do Logradouro' para iniciar a busca.")
+        st.warning("Por favor, preencha o 'Nome do Logradouro' ou o 'CEP' para iniciar a busca.")
         st.session_state['last_search_executed'] = False
 
 # Seção de Resultados
@@ -135,14 +153,15 @@ if 'resultados_busca' in st.session_state:
         st.header("📊 Resultados da Busca")
         st.info(f"Busca encontrou **{len(resultados_iniciais)}** resultados (limitado aos 1000 mais recentes).")
         
-        # Filtro Adicional
+        # --- INÍCIO DA ATUALIZAÇÃO: Layout Responsivo ---
         st.markdown("###### Refine sua busca:")
-        col_filtro1, col_filtro2 = st.columns(2)
-        with col_filtro1:
-            colunas_disponiveis = sorted(resultados_iniciais.columns)
-            coluna_para_filtrar = st.selectbox("Filtrar por coluna:", options=colunas_disponiveis)
-        with col_filtro2:
-            valor_para_filtrar = st.text_input("Contendo o valor:", placeholder="Digite para filtrar...")
+        
+        # Filtros agora ficam empilhados para melhor visualização em celulares
+        colunas_disponiveis = sorted(resultados_iniciais.columns)
+        coluna_para_filtrar = st.selectbox("Filtrar por coluna:", options=colunas_disponiveis)
+        
+        valor_para_filtrar = st.text_input("Contendo o valor:", placeholder="Digite para filtrar...")
+        # --- FIM DA ATUALIZAÇÃO ---
 
         # Lógica para aplicar o filtro dinâmico
         resultados_filtrados = resultados_iniciais
@@ -154,9 +173,8 @@ if 'resultados_busca' in st.session_state:
             except Exception as e:
                 st.error(f"Erro ao aplicar filtro: {e}")
 
-        # --- Formatação para Exibição ---
+        # Formatação para Exibição
         df_para_exibir = resultados_filtrados.copy()
-        
         coluna_valor = 'valor_de_transacao_declarado_pelo_contribuinte'
         if coluna_valor in df_para_exibir.columns:
             df_para_exibir[coluna_valor] = pd.to_numeric(df_para_exibir[coluna_valor], errors='coerce')
@@ -166,10 +184,8 @@ if 'resultados_busca' in st.session_state:
 
         st.dataframe(df_para_exibir, use_container_width=True)
 
-    # Mensagem de "nenhum resultado"
     elif st.session_state.get('last_search_executed', False):
         st.info("Nenhum resultado encontrado para os filtros informados.")
 
 else:
-    # Mensagem inicial da página
     st.info("Utilize os filtros na barra lateral à esquerda para iniciar sua análise.")
