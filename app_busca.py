@@ -1,4 +1,4 @@
-# app_busca.py (Versão 5.5 - Correção Final de Argumento OAuth)
+# app_busca.py (Versão 5.6 - Construção Manual da URL de Login)
 
 import streamlit as st
 import pandas as pd
@@ -117,11 +117,12 @@ if st.session_state.user is None:
         st.subheader("Acesse sua conta")
         
         # --- CORREÇÃO APLICADA AQUI ---
-        provider_response = supabase.auth.sign_in_with_oauth(
-            "google",
-            {"redirect_to": st.secrets["SITE_URL"]} # Passa as opções diretamente
-        )
-        st.link_button("Entrar com o Google", url=provider_response.url, use_container_width=True)
+        # Construímos a URL de login manualmente, o que é mais robusto
+        supabase_url = st.secrets["SUPABASE_URL"]
+        redirect_url = st.secrets["SITE_URL"]
+        google_auth_url = f"{supabase_url}/auth/v1/authorize?provider=google&redirect_to={redirect_url}"
+        
+        st.link_button("Entrar com o Google", url=google_auth_url, use_container_width=True)
         # --- FIM DA CORREÇÃO ---
 
         st.markdown("<h3 style='text-align: center; color: grey;'>ou</h3>", unsafe_allow_html=True)
