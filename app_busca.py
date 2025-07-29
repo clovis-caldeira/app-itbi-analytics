@@ -1,4 +1,4 @@
-# app_busca.py (Versão 6.1 - Correção de Indentação e Login Otimizado)
+# app_busca.py (Versão Final - Correção Definitiva do X-Frame-Options)
 
 import streamlit as st
 import pandas as pd
@@ -118,12 +118,12 @@ if 'user' not in st.session_state:
 if not st.session_state.get('user'):
     st.title("Bem-vindo à eXatas ITBI")
     st.markdown("A plataforma de inteligência para o mercado imobiliário.")
-    
+
     tab_login, tab_signup = st.tabs(["Entrar", "Cadastrar"])
 
     with tab_login:
         st.subheader("Acesse sua conta")
-        
+
         supabase_url = st.secrets["SUPABASE_URL"]
         redirect_url = st.secrets["SITE_URL"]
         google_auth_url = f"{supabase_url}/auth/v1/authorize?provider=google&redirect_to={redirect_url}"
@@ -132,6 +132,11 @@ if not st.session_state.get('user'):
         # Estilo CSS para o botão-link
         st.markdown("""
         <style>
+        .google-button-container {
+            width: 100%;
+            display: flex;
+            justify-content: center;
+        }
         .google-button {
             background-color: #FFFFFF;
             color: #444444;
@@ -144,6 +149,8 @@ if not st.session_state.get('user'):
             width: 100%;
             cursor: pointer;
             font-weight: bold;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            font-size: 1rem;
         }
         .google-button:hover {
             background-color: #F8F8F8;
@@ -151,9 +158,9 @@ if not st.session_state.get('user'):
         }
         </style>
         """, unsafe_allow_html=True)
-        
-        # O botão-link que força o redirecionamento
-        st.markdown(f'<a href="{google_auth_url}" target="_self" class="google-button">Entrar com o Google</a>', unsafe_allow_html=True)
+
+        # O botão-link que força o redirecionamento para a janela principal (target="_top")
+        st.markdown(f'<div class="google-button-container"><a href="{google_auth_url}" target="_top" class="google-button">Entrar com o Google</a></div>', unsafe_allow_html=True)
         # --- FIM DA CORREÇÃO ---
 
         st.markdown("<h3 style='text-align: center; color: grey;'>ou</h3>", unsafe_allow_html=True)
@@ -163,79 +170,4 @@ if not st.session_state.get('user'):
             if st.form_submit_button("Entrar com Email", use_container_width=True):
                 try:
                     user_session = supabase.auth.sign_in_with_password({"email": email, "password": password})
-                    st.session_state.user = user_session.user.dict()
-                    st.rerun()
-                except Exception:
-                    st.error("Erro no login: Credenciais inválidas.")
-    with tab_signup:
-        st.subheader("Crie sua conta")
-        with st.form("signup_form", border=False):
-            new_email = st.text_input("Seu Email", key="signup_email")
-            new_password = st.text_input("Crie uma Senha", type="password", key="signup_password")
-            if st.form_submit_button("Cadastrar", use_container_width=True):
-                try:
-                    supabase.auth.sign_up({"email": new_email, "password": new_password})
-                    st.success("Cadastro realizado! Verifique seu e-mail para confirmar a conta.")
-                except Exception as e:
-                    st.error(f"Erro no cadastro: {e}")
-
-# --- APLICAÇÃO PRINCIPAL ---
-else:
-    # (O resto do código da aplicação principal continua aqui, sem alterações)
-    user_profile = get_user_profile()
-    col_user1, col_user2 = st.columns([4, 1])
-    with col_user1:
-        st.title("eXatas ITBI")
-        st.markdown("##### Ferramenta de Análise do Mercado Imobiliário")
-    with col_user2:
-        if user_profile:
-            st.write(f"Plano: **{user_profile.get('plano', 'N/A').capitalize()}**")
-        if st.button("Sair", use_container_width=True):
-            supabase.auth.sign_out()
-            st.session_state.user = None
-            st.rerun()
-    pode_buscar, msg_limite = check_search_limit(user_profile)
-    st.info(msg_limite)
-    with st.expander("🔍 Filtros de Busca", expanded=True):
-        anos = get_anos_disponiveis(supabase)
-        rua = st.text_input("Nome do Logradouro", placeholder="Ex: Av Paulista")
-        num = st.text_input("Número", placeholder="(Opcional)")
-        cep = st.text_input("CEP", placeholder="Ex: 01311-000")
-        anos_sel = st.multiselect("Filtrar por Ano(s)", options=anos, placeholder="Todos os anos")
-        buscar_btn = st.button("Buscar", type="primary", use_container_width=True, disabled=not pode_buscar)
-    st.divider()
-    if buscar_btn:
-        if rua or cep:
-            with st.spinner("Buscando dados..."):
-                increment_search_count(user_profile)
-                st.session_state.resultados_busca = buscar_dados(supabase, nome_rua=rua, cep=cep, numero=num, anos_selecionados=anos_sel)
-                st.session_state.last_search_executed = True
-        else:
-            st.warning("Preencha o 'Nome do Logradouro' ou o 'CEP'.")
-    if 'resultados_busca' in st.session_state:
-        res_iniciais = st.session_state.get('resultados_busca')
-        if res_iniciais is not None and not res_iniciais.empty:
-            st.header("📊 Resultados da Busca")
-            st.info(f"Busca encontrou **{len(res_iniciais)}** resultados (limitado a 1000).")
-            st.markdown("###### Refine sua busca:")
-            cols = sorted(res_iniciais.columns)
-            col_filtro = st.selectbox("Filtrar por coluna:", options=cols)
-            val_filtro = st.text_input("Contendo o valor:", placeholder="Digite para filtrar...")
-            res_filtrados = res_iniciais
-            if val_filtro:
-                try:
-                    res_filtrados = res_iniciais[res_iniciais[col_filtro].astype(str).str.contains(val_filtro, case=False, na=False)]
-                except Exception as e:
-                    st.error(f"Erro ao filtrar: {e}")
-            df_exibir = res_filtrados.copy()
-            col_valor = 'valor_de_transacao_declarado_pelo_contribuinte'
-            if col_valor in df_exibir.columns:
-                df_exibir[col_valor] = pd.to_numeric(df_exibir[col_valor], errors='coerce')
-                df_exibir[col_valor] = df_exibir[col_valor].apply(
-                    lambda x: f'R$ {x:,.2f}'.replace(",", "X").replace(".", ",").replace("X", ".") if pd.notnull(x) else "N/A"
-                )
-            st.dataframe(df_exibir, use_container_width=True)
-        elif st.session_state.get('last_search_executed', False):
-            st.info("Nenhum resultado encontrado.")
-    else:
-        st.info("Utilize os filtros acima para iniciar sua análise.")
+                    st.session_state
