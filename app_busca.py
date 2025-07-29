@@ -106,6 +106,33 @@ def buscar_dados(_db: Client, **kwargs):
 # --- INÍCIO DA ATUALIZAÇÃO: Gerenciador de Sessão Definitivo ---
 def check_user_session():
     """Verifica a sessão usando o método oficial da biblioteca Supabase."""
+    
+    # Primeiro, verifica se há parâmetros de callback do Google OAuth na URL
+    query_params = st.query_params
+    
+    # Se há um token de acesso nos parâmetros (callback do Google)
+    if "access_token" in query_params:
+        access_token = query_params["access_token"]
+        refresh_token = query_params.get("refresh_token", "")
+        
+        try:
+            # Define a sessão com os tokens recebidos
+            supabase.auth.set_session(access_token, refresh_token)
+            
+            # Obtém o usuário da sessão
+            user = supabase.auth.get_user()
+            if user and user.user:
+                st.session_state.user = user.user.dict()
+                
+                # Limpa os parâmetros da URL para evitar loops
+                st.query_params.clear()
+                st.rerun()
+            
+        except Exception as e:
+            st.error(f"Erro ao processar login do Google: {e}")
+            st.query_params.clear()
+    
+    # Verificação normal da sessão
     session = supabase.auth.get_session()
     if session and session.user:
         st.session_state.user = session.user.dict()
@@ -126,11 +153,26 @@ if not st.session_state.get('user'):
     with tab_login:
         st.subheader("Acesse sua conta")
         
-        supabase_url = st.secrets["SUPABASE_URL"]
-        redirect_url = st.secrets["SITE_URL"]
+        try:
+            supabase_url = st.secrets["SUPABASE_URL"]
+            redirect_url = st.secrets["SITE_URL"]
+        except KeyError:
+            supabase_url = os.getenv("SUPABASE_URL")
+            redirect_url = "http://localhost:8501"  # Fallback para desenvolvimento
+        
+        # URL corrigida para o Google OAuth
         google_auth_url = f"{supabase_url}/auth/v1/authorize?provider=google&redirect_to={redirect_url}"
         
-        st.link_button("Entrar com o Google", url=google_auth_url, use_container_width=True)
+        # Adiciona informação sobre o redirecionamento
+        st.info("🔄 Após autorizar com o Google, você será redirecionado de volta para esta página.")
+        
+        col1, col2 = st.columns([1, 1])
+        with col1:
+            st.link_button("🔐 Entrar com Google", url=google_auth_url, use_container_width=True)
+        with col2:
+            if st.button("🔄 Verificar Login", use_container_width=True):
+                check_user_session()
+                st.rerun()
 
         st.markdown("<h3 style='text-align: center; color: grey;'>ou</h3>", unsafe_allow_html=True)
         with st.form("login_form", border=False):
@@ -221,3 +263,15 @@ else:
             st.info("Nenhum resultado encontrado.")
     else:
         st.info("Utilize os filtros acima para iniciar sua análise.")
+
+# --- DEBUG: Mostrar informações da sessão (remover em produção) ---
+if st.sidebar.button("🔍 Debug Session"):
+    st.sidebar.write("**Query Params:**", dict(st.query_params))
+    st.sidebar.write("**Session State:**", st.session_state.get('user', 'Não logado'))
+    
+    # Verifica sessão atual
+    try:
+        session = supabase.auth.get_session()
+        st.sidebar.write("**Supabase Session:**", "Ativa" if session and session.user else "Inativa")
+    except Exception as e:
+        st.sidebar.write("**Erro na sessão:**", str(e))
