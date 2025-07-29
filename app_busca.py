@@ -31,7 +31,7 @@ def init_supabase_connection() -> Client:
 supabase = init_supabase_connection()
 
 def get_user_profile():
-    user_id = st.session_state.get('user', {}).get('id')
+    user_id = st.session_state.user.get('id')
     if user_id:
         response = supabase.table('profiles').select('*').eq('id', user_id).execute()
         if response.data:
@@ -117,7 +117,7 @@ check_user_session()
 # --- FIM DA ATUALIZAÇÃO ---
 
 # --- TELA DE LOGIN ---
-if not st.session_state.get('user'):
+if st.session_state.user is None:
     st.title("Bem-vindo à eXatas ITBI")
     st.markdown("A plataforma de inteligência para o mercado imobiliário.")
     
@@ -154,7 +154,6 @@ if not st.session_state.get('user'):
                     st.success("Cadastro realizado! Verifique seu e-mail para confirmar a conta.")
                 except Exception as e:
                     st.error(f"Erro no cadastro: {e}")
-
 # --- APLICAÇÃO PRINCIPAL (SÓ APARECE SE ESTIVER LOGADO) ---
 else:
     user_profile = get_user_profile()
@@ -164,10 +163,8 @@ else:
         st.title("eXatas ITBI")
         st.markdown("##### Ferramenta de Análise do Mercado Imobiliário")
     with col_user2:
-        if user_profile:
-            st.write(f"Plano: **{user_profile.get('plano', 'N/A').capitalize()}**")
+        st.write(f"Plano: **{user_profile.get('plano', 'N/A').capitalize()}**")
         if st.button("Sair", use_container_width=True):
-            supabase.auth.sign_out()
             st.session_state.user = None
             st.rerun()
 
