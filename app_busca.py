@@ -1,4 +1,4 @@
-# app_busca.py (Versão 5.8 - Solução Definitiva com get_session())
+# app_busca.py (Versão 5.9 - Abordagem Final com GoTrue e Session Handling)
 
 import streamlit as st
 import pandas as pd
@@ -9,6 +9,7 @@ import unicodedata
 import re
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
+import time
 
 # --- 0. CONFIGURAÇÃO INICIAL DA PÁGINA ---
 st.set_page_config(layout="wide", page_title="eXatas ITBI - Análise Imobiliária", page_icon="assets/icon.png")
@@ -23,6 +24,7 @@ def init_supabase_connection() -> Client:
     except KeyError:
         supabase_url = os.getenv("SUPABASE_URL")
         supabase_key = os.getenv("SUPABASE_KEY")
+
     if not supabase_url or not supabase_key:
         st.error("ERRO: Credenciais do Supabase não configuradas.")
         st.stop()
@@ -31,7 +33,7 @@ def init_supabase_connection() -> Client:
 supabase = init_supabase_connection()
 
 def get_user_profile():
-    user_id = st.session_state.user.get('id')
+    user_id = st.session_state.get('user', {}).get('id')
     if user_id:
         response = supabase.table('profiles').select('*').eq('id', user_id).execute()
         if response.data:
@@ -103,21 +105,24 @@ def buscar_dados(_db: Client, **kwargs):
 
 # --- 3. LAYOUT E LÓGICA DA APLICAÇÃO ---
 
-# --- INÍCIO DA ATUALIZAÇÃO: Gerenciador de Sessão Definitivo ---
-def check_user_session():
-    """Verifica a sessão usando o método oficial da biblioteca Supabase."""
-    session = supabase.auth.get_session()
-    if session and session.user:
-        st.session_state.user = session.user.dict()
-    else:
+# --- INÍCIO DA ATUALIZAÇÃO: Gerenciador de Sessão ---
+def set_user_session():
+    """Tenta obter a sessão do usuário. Essencial após o redirect do OAuth."""
+    try:
+        session = supabase.auth.get_session()
+        if session and session.user:
+            st.session_state.user = session.user.dict()
+    except Exception as e:
+        st.error(f"Erro ao verificar sessão: {e}")
         st.session_state.user = None
 
 # Executa a verificação no início de cada recarregamento da página
-check_user_session()
+if 'user' not in st.session_state:
+    set_user_session()
 # --- FIM DA ATUALIZAÇÃO ---
 
 # --- TELA DE LOGIN ---
-if st.session_state.user is None:
+if not st.session_state.get('user'):
     st.title("Bem-vindo à eXatas ITBI")
     st.markdown("A plataforma de inteligência para o mercado imobiliário.")
     
@@ -126,11 +131,23 @@ if st.session_state.user is None:
     with tab_login:
         st.subheader("Acesse sua conta")
         
-        supabase_url = st.secrets["SUPABASE_URL"]
-        redirect_url = st.secrets["SITE_URL"]
-        google_auth_url = f"{supabase_url}/auth/v1/authorize?provider=google&redirect_to={redirect_url}"
-        
-        st.link_button("Entrar com o Google", url=google_auth_url, use_container_width=True)
+        # --- INÍCIO DA ATUALIZAÇÃO ---
+        # Botão de ação que dispara o fluxo de login
+        if st.button("Entrar com o Google", use_container_width=True):
+            try:
+                # O `sign_in_with_oauth` tentará o redirecionamento
+                supabase.auth.sign_in_with_oauth(
+                    provider="google",
+                    options={"redirect_to": st.secrets["SITE_URL"]}
+                )
+            except Exception as e:
+                # Se falhar, mostramos um link como fallback
+                st.warning("O redirecionamento automático falhou. Por favor, use este link para continuar:")
+                supabase_url = st.secrets["SUPABASE_URL"]
+                redirect_url = st.secrets["SITE_URL"]
+                google_auth_url = f"{supabase_url}/auth/v1/authorize?provider=google&redirect_to={redirect_url}"
+                st.markdown(f'<a href="{google_auth_url}" target="_self">Continuar com o Google</a>', unsafe_allow_html=True)
+        # --- FIM DA ATUALIZAÇÃO ---
 
         st.markdown("<h3 style='text-align: center; color: grey;'>ou</h3>", unsafe_allow_html=True)
         with st.form("login_form", border=False):
@@ -163,8 +180,10 @@ else:
         st.title("eXatas ITBI")
         st.markdown("##### Ferramenta de Análise do Mercado Imobiliário")
     with col_user2:
-        st.write(f"Plano: **{user_profile.get('plano', 'N/A').capitalize()}**")
+        if user_profile:
+            st.write(f"Plano: **{user_profile.get('plano', 'N/A').capitalize()}**")
         if st.button("Sair", use_container_width=True):
+            supabase.auth.sign_out()
             st.session_state.user = None
             st.rerun()
 
