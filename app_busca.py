@@ -1,4 +1,4 @@
-# app_busca.py (Versão 9.1 - Correção Final com Redirecionamento JS)
+# app_busca.py (Versão 6.1 - Correção de Indentação e Login Otimizado)
 
 import streamlit as st
 import pandas as pd
@@ -30,7 +30,6 @@ def init_supabase_connection() -> Client:
 
 supabase = init_supabase_connection()
 
-# ... (Todas as outras funções como get_user_profile, buscar_dados, etc. continuam aqui, sem alterações)
 def get_user_profile():
     user_id = st.session_state.get('user', {}).get('id')
     if user_id:
@@ -104,32 +103,16 @@ def buscar_dados(_db: Client, **kwargs):
 
 # --- 3. LAYOUT E LÓGICA DA APLICAÇÃO ---
 
-def handle_session():
-    """Gerencia a sessão do usuário, lidando com o callback do fluxo PKCE."""
-    if 'user' in st.session_state and st.session_state.user is not None:
-        return
-    if st.query_params.get("code"):
-        code = st.query_params.get("code")
-        try:
-            session = supabase.auth.exchange_code_for_session({"auth_code": code})
-            if session and session.user:
-                st.session_state.user = session.user.dict()
-                st.query_params.clear()
-                st.rerun()
-        except Exception as e:
-            st.error(f"Erro ao validar sessão: {e}")
-            st.query_params.clear()
-        return
+def set_user_session():
     try:
         session = supabase.auth.get_session()
         if session and session.user:
             st.session_state.user = session.user.dict()
-        else:
-            st.session_state.user = None
     except Exception:
         st.session_state.user = None
 
-handle_session()
+if 'user' not in st.session_state:
+    set_user_session()
 
 # --- TELA DE LOGIN ---
 if not st.session_state.get('user'):
@@ -141,41 +124,37 @@ if not st.session_state.get('user'):
     with tab_login:
         st.subheader("Acesse sua conta")
         
-        # --- INÍCIO DA ATUALIZAÇÃO ---
-        # Usamos st.markdown com HTML/JS para forçar o redirecionamento no navegador
-        #if st.button("Entrar com o Google", use_container_width=True):
-        # Substitua o st.link_button("Entrar com o Google", ...) por esta linha:
-         if st.markdown(f'<a href="{google_auth_url}" target="_top" class="button">Entrar com o Google</a>', unsafe_allow_html=True)
+        supabase_url = st.secrets["SUPABASE_URL"]
+        redirect_url = st.secrets["SITE_URL"]
+        google_auth_url = f"{supabase_url}/auth/v1/authorize?provider=google&redirect_to={redirect_url}"
 
-# Para estilizar o link como um botão, você pode adicionar CSS
-            st.markdown("""
-            <style>
-            .button {
-                background-color: #FF4B4B; /* Cor do botão primário do Streamlit */
-                color: white;
-                padding: 0.5rem 1rem;
-                border-radius: 0.5rem;
-                text-decoration: none;
-                display: inline-block;
-                text-align: center;
-                width: 100%;
-                border: none;
-                cursor: pointer;
-            }
-            .button:hover {
-                background-color: #FF6B6B;
-                color: white;
-            }
-            </style>
-            """, unsafe_allow_html=True)
-                    
-            res = supabase.auth.sign_in_with_oauth({
-                "provider": "google",
-                "options": { "redirect_to": st.secrets["SITE_URL"] }
-            })
-            # Injeta JavaScript para redirecionar a página
-            st.markdown(f'<meta http-equiv="refresh" content="0; url={res.url}">', unsafe_allow_html=True)
-        # --- FIM DA ATUALIZAÇÃO ---
+        # --- INÍCIO DA CORREÇÃO ---
+        # Estilo CSS para o botão-link
+        st.markdown("""
+        <style>
+        .google-button {
+            background-color: #FFFFFF;
+            color: #444444;
+            border: 1px solid #DDDDDD;
+            padding: 0.5rem 1rem;
+            border-radius: 0.5rem;
+            text-decoration: none;
+            display: inline-block;
+            text-align: center;
+            width: 100%;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .google-button:hover {
+            background-color: #F8F8F8;
+            color: #333333;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+        
+        # O botão-link que força o redirecionamento
+        st.markdown(f'<a href="{google_auth_url}" target="_self" class="google-button">Entrar com o Google</a>', unsafe_allow_html=True)
+        # --- FIM DA CORREÇÃO ---
 
         st.markdown("<h3 style='text-align: center; color: grey;'>ou</h3>", unsafe_allow_html=True)
         with st.form("login_form", border=False):
@@ -202,7 +181,7 @@ if not st.session_state.get('user'):
 
 # --- APLICAÇÃO PRINCIPAL ---
 else:
-    # ... (o código da aplicação principal continua aqui, sem alterações)
+    # (O resto do código da aplicação principal continua aqui, sem alterações)
     user_profile = get_user_profile()
     col_user1, col_user2 = st.columns([4, 1])
     with col_user1:
