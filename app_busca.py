@@ -104,39 +104,136 @@ def buscar_dados(_db: Client, **kwargs):
 # --- 3. LAYOUT E LÓGICA DA APLICAÇÃO ---
 
 # --- INÍCIO DA ATUALIZAÇÃO: Gerenciador de Sessão Definitivo ---
+# Função alternativa para processar callback do Google
+def processar_callback_google():
+    """Função alternativa para processar o callback do Google OAuth"""
+    query_params = dict(st.query_params)
+    
+    if not query_params:
+        return False
+    
+    st.write("🔍 **Debug - Parâmetros da URL:**")
+    st.json(query_params)
+    
+    # Processa diferentes formatos de callback
+    if "access_token" in query_params:
+        try:
+            access_token = query_params["access_token"]
+            
+            # Método 1: Tentar com set_session
+            if "refresh_token" in query_params:
+                refresh_token = query_params["refresh_token"]
+                st.write("🔄 **Tentativa 1:** Usando set_session com access + refresh token")
+                
+                try:
+                    response = supabase.auth.set_session(access_token, refresh_token)
+                    if response and response.user:
+                        st.session_state.user = response.user.dict()
+                        st.success("✅ Login realizado com set_session!")
+                        st.query_params.clear()
+                        return True
+                except Exception as e:
+                    st.write(f"❌ Erro no set_session: {e}")
+            
+            # Método 2: Tentar obter usuário diretamente com token
+            st.write("🔄 **Tentativa 2:** Usando get_user com access token")
+            try:
+                user_response = supabase.auth.get_user(access_token)
+                if user_response and user_response.user:
+                    st.session_state.user = user_response.user.dict()
+                    
+                    # Também tenta salvar o token para futuras requisições
+                    supabase.auth.set_session(access_token, query_params.get("refresh_token", ""))
+                    
+                    st.success("✅ Login realizado com get_user!")
+                    st.query_params.clear()
+                    return True
+            except Exception as e:
+                st.write(f"❌ Erro no get_user: {e}")
+            
+            # Método 3: Processamento manual dos dados
+            if "token_type" in query_params:
+                st.write("🔄 **Tentativa 3:** Processamento manual do token")
+                token_type = query_params.get("token_type", "bearer")
+                
+                # Cria um header de autorização e faz uma requisição manual
+                headers = {"Authorization": f"{token_type} {access_token}"}
+                st.write(f"Headers criados: {headers}")
+                
+        except Exception as e:
+            st.error(f"❌ Erro geral no processamento: {e}")
+    
+    return False
+
 def check_user_session():
     """Verifica a sessão usando o método oficial da biblioteca Supabase."""
     
     # Primeiro, verifica se há parâmetros de callback do Google OAuth na URL
     query_params = st.query_params
     
-    # Se há um token de acesso nos parâmetros (callback do Google)
-    if "access_token" in query_params:
+    # Debug: mostra os parâmetros recebidos
+    if query_params:
+        st.sidebar.write("🔍 **Parâmetros recebidos:**", dict(query_params))
+    
+    # Processa diferentes tipos de callback do Supabase
+    if "access_token" in query_params and "refresh_token" in query_params:
         access_token = query_params["access_token"]
-        refresh_token = query_params.get("refresh_token", "")
+        refresh_token = query_params["refresh_token"]
         
         try:
-            # Define a sessão com os tokens recebidos
-            supabase.auth.set_session(access_token, refresh_token)
+            st.info("🔄 Processando login do Google...")
             
-            # Obtém o usuário da sessão
-            user = supabase.auth.get_user()
-            if user and user.user:
-                st.session_state.user = user.user.dict()
+            # Define a sessão com os tokens recebidos do Google
+            session_response = supabase.auth.set_session(access_token, refresh_token)
+            
+            if session_response and session_response.user:
+                st.session_state.user = session_response.user.dict()
+                st.success("✅ Login realizado com sucesso!")
                 
                 # Limpa os parâmetros da URL para evitar loops
                 st.query_params.clear()
                 st.rerun()
+            else:
+                st.error("❌ Erro: Não foi possível obter dados do usuário")
             
         except Exception as e:
-            st.error(f"Erro ao processar login do Google: {e}")
-            st.query_params.clear()
+            st.error(f"❌ Erro ao processar login do Google: {e}")
+            st.sidebar.write("**Erro detalhado:**", str(e))
+            # Não limpa os parâmetros em caso de erro para debug
     
-    # Verificação normal da sessão
-    session = supabase.auth.get_session()
-    if session and session.user:
-        st.session_state.user = session.user.dict()
-    else:
+    # Se há apenas access_token (algumas versões do Supabase)
+    elif "access_token" in query_params:
+        access_token = query_params["access_token"]
+        
+        try:
+            st.info("🔄 Processando login do Google (token único)...")
+            
+            # Tenta definir a sessão apenas com access_token
+            user_response = supabase.auth.get_user(access_token)
+            
+            if user_response and user_response.user:
+                st.session_state.user = user_response.user.dict()
+                st.success("✅ Login realizado com sucesso!")
+                
+                # Limpa os parâmetros da URL
+                st.query_params.clear()
+                st.rerun()
+            else:
+                st.error("❌ Token inválido ou expirado")
+                
+        except Exception as e:
+            st.error(f"❌ Erro ao processar token: {e}")
+            st.sidebar.write("**Erro detalhado:**", str(e))
+    
+    # Verificação normal da sessão existente
+    try:
+        session = supabase.auth.get_session()
+        if session and session.user:
+            st.session_state.user = session.user.dict()
+        elif 'user' not in st.session_state:
+            st.session_state.user = None
+    except Exception as e:
+        st.sidebar.write("**Erro ao verificar sessão:**", str(e))
         st.session_state.user = None
 
 # Executa a verificação no início de cada recarregamento da página
@@ -165,6 +262,27 @@ if not st.session_state.get('user'):
         
         # Adiciona informação sobre o redirecionamento
         st.info("🔄 Após autorizar com o Google, você será redirecionado de volta para esta página.")
+        
+        # Verifica se há tokens na URL (indicando callback do Google)
+        query_params = dict(st.query_params)
+        if query_params:
+            st.warning("🔍 Parâmetros detectados na URL - processando...")
+            
+            col_debug1, col_debug2 = st.columns([1, 1])
+            
+            with col_debug1:
+                if st.button("🔄 Processar Automático", type="primary"):
+                    check_user_session()
+                    st.rerun()
+            
+            with col_debug2:
+                if st.button("�️ Processar Manual", type="secondary"):
+                    if processar_callback_google():
+                        st.rerun()
+            
+            # Mostrar dados para debug
+            with st.expander("🔍 Ver dados de debug"):
+                st.json(query_params)
         
         col1, col2 = st.columns([1, 1])
         with col1:
@@ -275,3 +393,64 @@ if st.sidebar.button("🔍 Debug Session"):
         st.sidebar.write("**Supabase Session:**", "Ativa" if session and session.user else "Inativa")
     except Exception as e:
         st.sidebar.write("**Erro na sessão:**", str(e))
+
+# Função alternativa para processar callback do Google
+def processar_callback_google():
+    """Função alternativa para processar o callback do Google OAuth"""
+    query_params = dict(st.query_params)
+    
+    if not query_params:
+        return False
+    
+    st.write("🔍 **Debug - Parâmetros da URL:**")
+    st.json(query_params)
+    
+    # Processa diferentes formatos de callback
+    if "access_token" in query_params:
+        try:
+            access_token = query_params["access_token"]
+            
+            # Método 1: Tentar com set_session
+            if "refresh_token" in query_params:
+                refresh_token = query_params["refresh_token"]
+                st.write("🔄 **Tentativa 1:** Usando set_session com access + refresh token")
+                
+                try:
+                    response = supabase.auth.set_session(access_token, refresh_token)
+                    if response and response.user:
+                        st.session_state.user = response.user.dict()
+                        st.success("✅ Login realizado com set_session!")
+                        st.query_params.clear()
+                        return True
+                except Exception as e:
+                    st.write(f"❌ Erro no set_session: {e}")
+            
+            # Método 2: Tentar obter usuário diretamente com token
+            st.write("🔄 **Tentativa 2:** Usando get_user com access token")
+            try:
+                user_response = supabase.auth.get_user(access_token)
+                if user_response and user_response.user:
+                    st.session_state.user = user_response.user.dict()
+                    
+                    # Também tenta salvar o token para futuras requisições
+                    supabase.auth.set_session(access_token, query_params.get("refresh_token", ""))
+                    
+                    st.success("✅ Login realizado com get_user!")
+                    st.query_params.clear()
+                    return True
+            except Exception as e:
+                st.write(f"❌ Erro no get_user: {e}")
+            
+            # Método 3: Processamento manual dos dados
+            if "token_type" in query_params:
+                st.write("🔄 **Tentativa 3:** Processamento manual do token")
+                token_type = query_params.get("token_type", "bearer")
+                
+                # Cria um header de autorização e faz uma requisição manual
+                headers = {"Authorization": f"{token_type} {access_token}"}
+                st.write(f"Headers criados: {headers}")
+                
+        except Exception as e:
+            st.error(f"❌ Erro geral no processamento: {e}")
+    
+    return False
