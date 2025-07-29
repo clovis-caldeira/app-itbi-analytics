@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Autenticando...</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+    <p>Aguarde, estamos autenticando sua sessão...</p>
+
+    <script type="text/javascript">
+        // Cole suas credenciais do Supabase aqui
+        const supaUrl = 'https://pmivvwtqllcspjwnxzuc.supabase.co';
+        const supaKey = 'sb_publishable_6fhI0XCb34MuNaM0vXwvGw_c-u-6OXq';
+
+        const supabase = supabase.createClient(supaUrl, supaKey);
+
+        // O Supabase JS automaticamente detecta o token na URL (#)
+        // e estabelece a sessão.
+        // O listener abaixo é acionado quando o login é bem-sucedido.
+        supabase.auth.onAuthStateChange((event, session) => {
+            if (event === 'SIGNED_IN') {
+                // Quando o login for confirmado, redireciona para a aplicação principal.
+                // Substitua pela URL da sua aplicação Streamlit.
+                window.location.href = 'https://exatos.streamlit.app';
+            }
+        });
+    </script>
+</body>
+</html>
