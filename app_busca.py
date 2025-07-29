@@ -1,4 +1,4 @@
-# app_busca.py (Versão 5.7 - Gerenciador de Sessão OAuth)
+# app_busca.py (Versão 5.8 - Solução Definitiva com get_session())
 
 import streamlit as st
 import pandas as pd
@@ -23,7 +23,6 @@ def init_supabase_connection() -> Client:
     except KeyError:
         supabase_url = os.getenv("SUPABASE_URL")
         supabase_key = os.getenv("SUPABASE_KEY")
-
     if not supabase_url or not supabase_key:
         st.error("ERRO: Credenciais do Supabase não configuradas.")
         st.stop()
@@ -31,7 +30,6 @@ def init_supabase_connection() -> Client:
 
 supabase = init_supabase_connection()
 
-# ... (Todas as outras funções de dados como get_user_profile, buscar_dados, etc. continuam aqui, sem alterações)
 def get_user_profile():
     user_id = st.session_state.user.get('id')
     if user_id:
@@ -103,29 +101,20 @@ def buscar_dados(_db: Client, **kwargs):
         st.error(f"Erro na busca: {e}")
         return pd.DataFrame()
 
-
 # --- 3. LAYOUT E LÓGICA DA APLICAÇÃO ---
 
-# --- INÍCIO DA ATUALIZAÇÃO: Gerenciador de Sessão ---
-# Tenta obter o token da URL. O Supabase o coloca aqui após o redirect do Google.
-query_params = st.query_params
-access_token = query_params.get("access_token")
+# --- INÍCIO DA ATUALIZAÇÃO: Gerenciador de Sessão Definitivo ---
+def check_user_session():
+    """Verifica a sessão usando o método oficial da biblioteca Supabase."""
+    session = supabase.auth.get_session()
+    if session and session.user:
+        st.session_state.user = session.user.dict()
+    else:
+        st.session_state.user = None
 
-# Se encontrarmos um token, tentamos estabelecer a sessão
-if access_token and 'user' not in st.session_state:
-    try:
-        # Define a sessão usando o token da URL
-        user_session = supabase.auth.set_session(access_token, query_params.get("refresh_token"))
-        st.session_state.user = user_session.user.dict()
-        # Limpa os parâmetros da URL para não ficarem visíveis
-        st.query_params.clear()
-        st.rerun() # Recarrega a página já logado
-    except Exception as e:
-        st.error(f"Ocorreu um erro ao tentar validar sua sessão: {e}")
+# Executa a verificação no início de cada recarregamento da página
+check_user_session()
 # --- FIM DA ATUALIZAÇÃO ---
-
-if 'user' not in st.session_state:
-    st.session_state.user = None
 
 # --- TELA DE LOGIN ---
 if st.session_state.user is None:
@@ -177,7 +166,6 @@ else:
         st.write(f"Plano: **{user_profile.get('plano', 'N/A').capitalize()}**")
         if st.button("Sair", use_container_width=True):
             st.session_state.user = None
-            st.query_params.clear() # Limpa a URL ao sair
             st.rerun()
 
     pode_buscar, msg_limite = check_search_limit(user_profile)
