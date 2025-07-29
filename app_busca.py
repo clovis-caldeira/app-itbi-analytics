@@ -1,4 +1,4 @@
-# app_busca.py (Versão 9.0 - Solução Definitiva com Fluxo PKCE)
+# app_busca.py (Versão 9.1 - Correção Final com Redirecionamento JS)
 
 import streamlit as st
 import pandas as pd
@@ -102,32 +102,24 @@ def buscar_dados(_db: Client, **kwargs):
         st.error(f"Erro na busca: {e}")
         return pd.DataFrame()
 
-
 # --- 3. LAYOUT E LÓGICA DA APLICAÇÃO ---
 
-# --- INÍCIO DA ATUALIZAÇÃO: Gerenciador de Sessão para PKCE ---
 def handle_session():
     """Gerencia a sessão do usuário, lidando com o callback do fluxo PKCE."""
-    # Se o usuário já está logado, não faz nada.
     if 'user' in st.session_state and st.session_state.user is not None:
         return
-
-    # Se há um código de autorização na URL (retorno do Google)
     if st.query_params.get("code"):
         code = st.query_params.get("code")
         try:
-            # Troca o código pela sessão do usuário
             session = supabase.auth.exchange_code_for_session({"auth_code": code})
             if session and session.user:
                 st.session_state.user = session.user.dict()
-                st.query_params.clear() # Limpa a URL
-                st.rerun() # Recarrega a página já logado
+                st.query_params.clear()
+                st.rerun()
         except Exception as e:
             st.error(f"Erro ao validar sessão: {e}")
             st.query_params.clear()
         return
-    
-    # Se não, tenta recuperar uma sessão existente
     try:
         session = supabase.auth.get_session()
         if session and session.user:
@@ -137,9 +129,7 @@ def handle_session():
     except Exception:
         st.session_state.user = None
 
-# Executa o gerenciador de sessão no início de cada recarga
 handle_session()
-# --- FIM DA ATUALIZAÇÃO ---
 
 # --- TELA DE LOGIN ---
 if not st.session_state.get('user'):
@@ -151,16 +141,15 @@ if not st.session_state.get('user'):
     with tab_login:
         st.subheader("Acesse sua conta")
         
-        # --- ATUALIZAÇÃO FINAL ---
-        # A URL agora aponta para o Supabase, que irá iniciar o fluxo PKCE
+        # --- INÍCIO DA ATUALIZAÇÃO ---
+        # Usamos st.markdown com HTML/JS para forçar o redirecionamento no navegador
         if st.button("Entrar com o Google", use_container_width=True):
-            # Gera a URL de autorização para o fluxo PKCE
             res = supabase.auth.sign_in_with_oauth({
                 "provider": "google",
                 "options": { "redirect_to": st.secrets["SITE_URL"] }
             })
-            # Redireciona o usuário para a URL do Google
-            st.switch_page(res.url)
+            # Injeta JavaScript para redirecionar a página
+            st.markdown(f'<meta http-equiv="refresh" content="0; url={res.url}">', unsafe_allow_html=True)
         # --- FIM DA ATUALIZAÇÃO ---
 
         st.markdown("<h3 style='text-align: center; color: grey;'>ou</h3>", unsafe_allow_html=True)
@@ -190,7 +179,6 @@ if not st.session_state.get('user'):
 else:
     # ... (o código da aplicação principal continua aqui, sem alterações)
     user_profile = get_user_profile()
-
     col_user1, col_user2 = st.columns([4, 1])
     with col_user1:
         st.title("eXatas ITBI")
@@ -202,10 +190,8 @@ else:
             supabase.auth.sign_out()
             st.session_state.user = None
             st.rerun()
-
     pode_buscar, msg_limite = check_search_limit(user_profile)
     st.info(msg_limite)
-    
     with st.expander("🔍 Filtros de Busca", expanded=True):
         anos = get_anos_disponiveis(supabase)
         rua = st.text_input("Nome do Logradouro", placeholder="Ex: Av Paulista")
@@ -213,9 +199,7 @@ else:
         cep = st.text_input("CEP", placeholder="Ex: 01311-000")
         anos_sel = st.multiselect("Filtrar por Ano(s)", options=anos, placeholder="Todos os anos")
         buscar_btn = st.button("Buscar", type="primary", use_container_width=True, disabled=not pode_buscar)
-
     st.divider()
-
     if buscar_btn:
         if rua or cep:
             with st.spinner("Buscando dados..."):
@@ -224,12 +208,11 @@ else:
                 st.session_state.last_search_executed = True
         else:
             st.warning("Preencha o 'Nome do Logradouro' ou o 'CEP'.")
-    
     if 'resultados_busca' in st.session_state:
         res_iniciais = st.session_state.get('resultados_busca')
         if res_iniciais is not None and not res_iniciais.empty:
             st.header("📊 Resultados da Busca")
-            st.info(f"Busca encontrou **{len(res_iniciais)}** resultados (limitado aos 1000 mais recentes).")
+            st.info(f"Busca encontrou **{len(res_iniciais)}** resultados (limitado a 1000).")
             st.markdown("###### Refine sua busca:")
             cols = sorted(res_iniciais.columns)
             col_filtro = st.selectbox("Filtrar por coluna:", options=cols)
@@ -240,7 +223,6 @@ else:
                     res_filtrados = res_iniciais[res_iniciais[col_filtro].astype(str).str.contains(val_filtro, case=False, na=False)]
                 except Exception as e:
                     st.error(f"Erro ao filtrar: {e}")
-            
             df_exibir = res_filtrados.copy()
             col_valor = 'valor_de_transacao_declarado_pelo_contribuinte'
             if col_valor in df_exibir.columns:
