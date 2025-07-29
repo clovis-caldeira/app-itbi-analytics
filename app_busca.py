@@ -1,4 +1,4 @@
-# app_busca.py (Versão Final e Definitiva - Correção do Sandboxed Iframe)
+# app_busca.py (Versão Final e Definitiva - Solução com Callback Page)
 
 import streamlit as st
 import pandas as pd
@@ -9,6 +9,7 @@ import unicodedata
 import re
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
+from urllib.parse import quote_plus # Importa a função para codificar URLs
 
 # --- 0. CONFIGURAÇÃO INICIAL DA PÁGINA ---
 st.set_page_config(layout="wide", page_title="eXatas ITBI - Análise Imobiliária", page_icon="assets/icon.png")
@@ -17,6 +18,7 @@ st.set_page_config(layout="wide", page_title="eXatas ITBI - Análise Imobiliári
 
 @st.cache_resource
 def init_supabase_connection() -> Client:
+    # ... (esta função continua igual)
     try:
         supabase_url = st.secrets["SUPABASE_URL"]
         supabase_key = st.secrets["SUPABASE_KEY"]
@@ -30,6 +32,7 @@ def init_supabase_connection() -> Client:
 
 supabase = init_supabase_connection()
 
+# ... (Todas as outras funções como get_user_profile, buscar_dados, etc. continuam aqui, sem alterações)
 def get_user_profile():
     user_id = st.session_state.get('user', {}).get('id')
     if user_id:
@@ -101,13 +104,17 @@ def buscar_dados(_db: Client, **kwargs):
         st.error(f"Erro na busca: {e}")
         return pd.DataFrame()
 
+
 # --- 3. LAYOUT E LÓGICA DA APLICAÇÃO ---
 
 def set_user_session():
+    """Verifica a sessão usando o método oficial da biblioteca Supabase."""
     try:
         session = supabase.auth.get_session()
         if session and session.user:
             st.session_state.user = session.user.dict()
+        else:
+            st.session_state.user = None
     except Exception:
         st.session_state.user = None
 
@@ -124,21 +131,18 @@ if not st.session_state.get('user'):
     with tab_login:
         st.subheader("Acesse sua conta")
         
-        supabase_url = st.secrets["SUPABASE_URL"]
-        redirect_url = st.secrets["SITE_URL"]
-        google_auth_url = f"{supabase_url}/auth/v1/authorize?provider=google&redirect_to={redirect_url}"
-
-        st.markdown("""
-        <style>
-        .google-button { ... } 
-        </style>
-        """, unsafe_allow_html=True) # CSS Omitido para brevidade
-
-        # --- INÍCIO DA CORREÇÃO ---
-        # A mudança de target="_top" para target="_blank" força a abertura em uma nova aba,
-        # escapando do iframe e resolvendo o erro de sandbox.
-        st.markdown(f'<div class="google-button-container"><a href="{google_auth_url}" target="_blank" class="google-button">Entrar com o Google</a></div>', unsafe_allow_html=True)
-        # --- FIM DA CORREÇÃO ---
+        # --- ATUALIZAÇÃO FINAL ---
+        # Constrói a URL de callback com as credenciais para o JavaScript
+        supabase_url_encoded = quote_plus(st.secrets["SUPABASE_URL"])
+        supabase_key_encoded = quote_plus(st.secrets["SUPABASE_KEY"])
+        callback_url_base = "https://SEU_USUARIO.github.io/app-itbi-analytics/callback.html" # SUBSTITUA PELA SUA URL
+        callback_url_com_params = f"{callback_url_base}?supabase_url={supabase_url_encoded}&supabase_key={supabase_key_encoded}"
+        
+        # Gera a URL de autorização do Google, apontando para nossa página de callback
+        google_auth_url = f"{st.secrets['SUPABASE_URL']}/auth/v1/authorize?provider=google&redirect_to={callback_url_com_params}"
+        # --- FIM DA ATUALIZAÇÃO ---
+        
+        st.link_button("Entrar com o Google", url=google_auth_url, use_container_width=True)
 
         st.markdown("<h3 style='text-align: center; color: grey;'>ou</h3>", unsafe_allow_html=True)
         with st.form("login_form", border=False):
@@ -152,7 +156,6 @@ if not st.session_state.get('user'):
                 except Exception:
                     st.error("Erro no login: Credenciais inválidas.")
     with tab_signup:
-        # ... (código de cadastro omitido para brevidade, continua o mesmo)
         st.subheader("Crie sua conta")
         with st.form("signup_form", border=False):
             new_email = st.text_input("Seu Email", key="signup_email")
@@ -166,8 +169,9 @@ if not st.session_state.get('user'):
 
 # --- APLICAÇÃO PRINCIPAL ---
 else:
-    # ... (código da aplicação principal omitido para brevidade, continua o mesmo)
+    # ... (o código da aplicação principal continua aqui, sem alterações)
     user_profile = get_user_profile()
+
     col_user1, col_user2 = st.columns([4, 1])
     with col_user1:
         st.title("eXatas ITBI")
@@ -179,8 +183,10 @@ else:
             supabase.auth.sign_out()
             st.session_state.user = None
             st.rerun()
+
     pode_buscar, msg_limite = check_search_limit(user_profile)
     st.info(msg_limite)
+    
     with st.expander("🔍 Filtros de Busca", expanded=True):
         anos = get_anos_disponiveis(supabase)
         rua = st.text_input("Nome do Logradouro", placeholder="Ex: Av Paulista")
@@ -188,7 +194,9 @@ else:
         cep = st.text_input("CEP", placeholder="Ex: 01311-000")
         anos_sel = st.multiselect("Filtrar por Ano(s)", options=anos, placeholder="Todos os anos")
         buscar_btn = st.button("Buscar", type="primary", use_container_width=True, disabled=not pode_buscar)
+
     st.divider()
+
     if buscar_btn:
         if rua or cep:
             with st.spinner("Buscando dados..."):
@@ -197,11 +205,12 @@ else:
                 st.session_state.last_search_executed = True
         else:
             st.warning("Preencha o 'Nome do Logradouro' ou o 'CEP'.")
+    
     if 'resultados_busca' in st.session_state:
         res_iniciais = st.session_state.get('resultados_busca')
         if res_iniciais is not None and not res_iniciais.empty:
             st.header("📊 Resultados da Busca")
-            st.info(f"Busca encontrou **{len(res_iniciais)}** resultados (limitado a 1000).")
+            st.info(f"Busca encontrou **{len(res_iniciais)}** resultados (limitado aos 1000 mais recentes).")
             st.markdown("###### Refine sua busca:")
             cols = sorted(res_iniciais.columns)
             col_filtro = st.selectbox("Filtrar por coluna:", options=cols)
@@ -212,6 +221,7 @@ else:
                     res_filtrados = res_iniciais[res_iniciais[col_filtro].astype(str).str.contains(val_filtro, case=False, na=False)]
                 except Exception as e:
                     st.error(f"Erro ao filtrar: {e}")
+            
             df_exibir = res_filtrados.copy()
             col_valor = 'valor_de_transacao_declarado_pelo_contribuinte'
             if col_valor in df_exibir.columns:
