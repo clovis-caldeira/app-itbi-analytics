@@ -6,25 +6,27 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
-    <p>Aguarde, estamos autenticando sua sessão...</p>
+    <p>Aguarde, estamos autenticando sua sessão e redirecionando você de volta para a aplicação...</p>
 
     <script type="text/javascript">
-        // Cole suas credenciais do Supabase aqui
+        // Esta função pega os parâmetros 'supabase_url' e 'supabase_key' da URL
+        const params = new URLSearchParams(window.location.search);
         const supaUrl = 'https://pmivvwtqllcspjwnxzuc.supabase.co';
         const supaKey = 'sb_publishable_6fhI0XCb34MuNaM0vXwvGw_c-u-6OXq';
 
-        const supabase = supabase.createClient(supaUrl, supaKey);
+        if (supaUrl && supaKey) {
+            const supabase = supabase.createClient(supaUrl, supaKey);
 
-        // O Supabase JS automaticamente detecta o token na URL (#)
-        // e estabelece a sessão.
-        // O listener abaixo é acionado quando o login é bem-sucedido.
-        supabase.auth.onAuthStateChange((event, session) => {
-            if (event === 'SIGNED_IN') {
-                // Quando o login for confirmado, redireciona para a aplicação principal.
-                // Substitua pela URL da sua aplicação Streamlit.
-                window.location.href = 'https://exatos.streamlit.app';
-            }
-        });
+            // O Supabase JS automaticamente detecta o token na URL (#) e estabelece a sessão.
+            supabase.auth.onAuthStateChange((event, session) => {
+                if (event === 'SIGNED_IN') {
+                    // Quando o login for confirmado, redireciona para a aplicação principal.
+                    window.location.href = 'https://exatos.streamlit.app';
+                }
+            });
+        } else {
+            document.body.innerHTML = '<p>Erro: Credenciais do Supabase não encontradas na URL.</p>';
+        }
     </script>
 </body>
 </html>
