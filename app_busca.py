@@ -1,4 +1,4 @@
-# app_busca.py (Versão 6.0 - Login com Google Otimizado)
+# app_busca.py (Versão 5.8 - Solução Definitiva com get_session())
 
 import streamlit as st
 import pandas as pd
@@ -23,7 +23,6 @@ def init_supabase_connection() -> Client:
     except KeyError:
         supabase_url = os.getenv("SUPABASE_URL")
         supabase_key = os.getenv("SUPABASE_KEY")
-
     if not supabase_url or not supabase_key:
         st.error("ERRO: Credenciais do Supabase não configuradas.")
         st.stop()
@@ -31,7 +30,6 @@ def init_supabase_connection() -> Client:
 
 supabase = init_supabase_connection()
 
-# ... (Todas as outras funções como get_user_profile, buscar_dados, etc. continuam aqui, sem alterações)
 def get_user_profile():
     user_id = st.session_state.get('user', {}).get('id')
     if user_id:
@@ -105,17 +103,18 @@ def buscar_dados(_db: Client, **kwargs):
 
 # --- 3. LAYOUT E LÓGICA DA APLICAÇÃO ---
 
-def set_user_session():
-    """Tenta obter a sessão do usuário. Essencial após o redirect do OAuth."""
-    try:
-        session = supabase.auth.get_session()
-        if session and session.user:
-            st.session_state.user = session.user.dict()
-    except Exception:
+# --- INÍCIO DA ATUALIZAÇÃO: Gerenciador de Sessão Definitivo ---
+def check_user_session():
+    """Verifica a sessão usando o método oficial da biblioteca Supabase."""
+    session = supabase.auth.get_session()
+    if session and session.user:
+        st.session_state.user = session.user.dict()
+    else:
         st.session_state.user = None
 
-if 'user' not in st.session_state:
-    set_user_session()
+# Executa a verificação no início de cada recarregamento da página
+check_user_session()
+# --- FIM DA ATUALIZAÇÃO ---
 
 # --- TELA DE LOGIN ---
 if not st.session_state.get('user'):
@@ -127,15 +126,11 @@ if not st.session_state.get('user'):
     with tab_login:
         st.subheader("Acesse sua conta")
         
-        # --- INÍCIO DA ATUALIZAÇÃO ---
-        # Gera a URL de login do Google
         supabase_url = st.secrets["SUPABASE_URL"]
         redirect_url = st.secrets["SITE_URL"]
         google_auth_url = f"{supabase_url}/auth/v1/authorize?provider=google&redirect_to={redirect_url}"
-
-        # Usa o st.link_button que é feito exatamente para redirecionamentos
+        
         st.link_button("Entrar com o Google", url=google_auth_url, use_container_width=True)
-        # --- FIM DA ATUALIZAÇÃO ---
 
         st.markdown("<h3 style='text-align: center; color: grey;'>ou</h3>", unsafe_allow_html=True)
         with st.form("login_form", border=False):
@@ -159,9 +154,9 @@ if not st.session_state.get('user'):
                     st.success("Cadastro realizado! Verifique seu e-mail para confirmar a conta.")
                 except Exception as e:
                     st.error(f"Erro no cadastro: {e}")
+
 # --- APLICAÇÃO PRINCIPAL (SÓ APARECE SE ESTIVER LOGADO) ---
 else:
-    # (O resto do código da aplicação principal continua aqui, sem alterações)
     user_profile = get_user_profile()
 
     col_user1, col_user2 = st.columns([4, 1])
@@ -202,7 +197,7 @@ else:
         res_iniciais = st.session_state.get('resultados_busca')
         if res_iniciais is not None and not res_iniciais.empty:
             st.header("📊 Resultados da Busca")
-            st.info(f"Busca encontrou **{len(res_iniciais)}** resultados (limitado a 1000).")
+            st.info(f"Busca encontrou **{len(res_iniciais)}** resultados (limitado aos 1000 mais recentes).")
             st.markdown("###### Refine sua busca:")
             cols = sorted(res_iniciais.columns)
             col_filtro = st.selectbox("Filtrar por coluna:", options=cols)
