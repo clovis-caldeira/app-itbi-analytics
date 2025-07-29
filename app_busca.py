@@ -1,4 +1,4 @@
-# app_busca.py (Versão 7.0 - Solução Definitiva com Componente JavaScript)
+# app_busca.py (Versão 8.0 - Solução Definitiva com Callback Page)
 
 import streamlit as st
 import pandas as pd
@@ -9,7 +9,6 @@ import unicodedata
 import re
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
-import streamlit.components.v1 as components
 
 # --- 0. CONFIGURAÇÃO INICIAL DA PÁGINA ---
 st.set_page_config(layout="wide", page_title="eXatas ITBI - Análise Imobiliária", page_icon="assets/icon.png")
@@ -18,6 +17,7 @@ st.set_page_config(layout="wide", page_title="eXatas ITBI - Análise Imobiliári
 
 @st.cache_resource
 def init_supabase_connection() -> Client:
+    # ... (esta função continua igual)
     try:
         supabase_url = st.secrets["SUPABASE_URL"]
         supabase_key = st.secrets["SUPABASE_KEY"]
@@ -31,6 +31,7 @@ def init_supabase_connection() -> Client:
 
 supabase = init_supabase_connection()
 
+# ... (Todas as outras funções como get_user_profile, buscar_dados, etc. continuam aqui, sem alterações)
 def get_user_profile():
     user_id = st.session_state.get('user', {}).get('id')
     if user_id:
@@ -102,9 +103,10 @@ def buscar_dados(_db: Client, **kwargs):
         st.error(f"Erro na busca: {e}")
         return pd.DataFrame()
 
+
 # --- 3. LAYOUT E LÓGICA DA APLICAÇÃO ---
 
-# Gerenciador de Sessão
+# Gerenciador de Sessão Simplificado
 def check_user_session():
     try:
         session = supabase.auth.get_session()
@@ -120,30 +122,6 @@ check_user_session()
 
 # --- TELA DE LOGIN ---
 if not st.session_state.get('user'):
-    # --- INÍCIO DA ATUALIZAÇÃO: Componente JavaScript ---
-    # Este componente usa a biblioteca Supabase.js para lidar com o login OAuth no navegador.
-    supabase_url = st.secrets["SUPABASE_URL"]
-    supabase_key = st.secrets["SUPABASE_KEY"]
-    site_url = st.secrets["SITE_URL"]
-
-    supabase_js_component = f"""
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script>
-        const supabase = supabase.createClient('{supabase_url}', '{supabase_key}');
-        
-        // Listener para eventos de autenticação
-        supabase.auth.onAuthStateChange((event, session) => {{
-            // Se o evento for um login bem-sucedido e a URL contiver o hash
-            if (event === 'SIGNED_IN' && window.location.hash) {{
-                // Redireciona para a URL limpa para que o Streamlit possa recarregar e pegar a sessão.
-                window.location.href = '{site_url}';
-            }}
-        }});
-    </script>
-    """
-    components.html(supabase_js_component, height=0)
-    # --- FIM DA ATUALIZAÇÃO ---
-
     st.title("Bem-vindo à eXatas ITBI")
     st.markdown("A plataforma de inteligência para o mercado imobiliário.")
     
@@ -152,7 +130,13 @@ if not st.session_state.get('user'):
     with tab_login:
         st.subheader("Acesse sua conta")
         
-        google_auth_url = f"{supabase_url}/auth/v1/authorize?provider=google&redirect_to={site_url}"
+        # --- ATUALIZAÇÃO FINAL ---
+        # A URL agora aponta para o Supabase, que irá redirecionar para nossa página callback.html
+        supabase_url = st.secrets["SUPABASE_URL"]
+        callback_url = "https://SEU_USUARIO.github.io/SEU_REPOSITORIO/callback.html" # SUBSTITUA PELA SUA URL
+        google_auth_url = f"{supabase_url}/auth/v1/authorize?provider=google&redirect_to={callback_url}"
+        # --- FIM DA ATUALIZAÇÃO ---
+        
         st.link_button("Entrar com o Google", url=google_auth_url, use_container_width=True)
 
         st.markdown("<h3 style='text-align: center; color: grey;'>ou</h3>", unsafe_allow_html=True)
@@ -178,8 +162,9 @@ if not st.session_state.get('user'):
                 except Exception as e:
                     st.error(f"Erro no cadastro: {e}")
 
-# --- APLICAÇÃO PRINCIPAL (se o usuário estiver logado) ---
+# --- APLICAÇÃO PRINCIPAL ---
 else:
+    # ... (o código da aplicação principal continua aqui, sem alterações)
     user_profile = get_user_profile()
 
     col_user1, col_user2 = st.columns([4, 1])
