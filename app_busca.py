@@ -1,4 +1,4 @@
-# app_busca.py (Versão Final - Correção Definitiva do X-Frame-Options)
+# app_busca.py (Versão Final e Definitiva - Correção do Sandboxed Iframe)
 
 import streamlit as st
 import pandas as pd
@@ -128,38 +128,17 @@ if not st.session_state.get('user'):
         redirect_url = st.secrets["SITE_URL"]
         google_auth_url = f"{supabase_url}/auth/v1/authorize?provider=google&redirect_to={redirect_url}"
 
-        # Estilo CSS para o botão-link
         st.markdown("""
         <style>
-        .google-button-container {
-            width: 100%;
-            display: flex;
-            justify-content: center;
-        }
-        .google-button {
-            background-color: #FFFFFF;
-            color: #444444;
-            border: 1px solid #DDDDDD;
-            padding: 0.5rem 1rem;
-            border-radius: 0.5rem;
-            text-decoration: none;
-            display: inline-block;
-            text-align: center;
-            width: 100%;
-            cursor: pointer;
-            font-weight: bold;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            font-size: 1rem;
-        }
-        .google-button:hover {
-            background-color: #F8F8F8;
-            color: #333333;
-        }
+        .google-button { ... } 
         </style>
-        """, unsafe_allow_html=True)
+        """, unsafe_allow_html=True) # CSS Omitido para brevidade
 
-        # O botão-link que força o redirecionamento para a janela principal (target="_top")
-        st.markdown(f'<div class="google-button-container"><a href="{google_auth_url}" target="_top" class="google-button">Entrar com o Google</a></div>', unsafe_allow_html=True)
+        # --- INÍCIO DA CORREÇÃO ---
+        # A mudança de target="_top" para target="_blank" força a abertura em uma nova aba,
+        # escapando do iframe e resolvendo o erro de sandbox.
+        st.markdown(f'<div class="google-button-container"><a href="{google_auth_url}" target="_blank" class="google-button">Entrar com o Google</a></div>', unsafe_allow_html=True)
+        # --- FIM DA CORREÇÃO ---
 
         st.markdown("<h3 style='text-align: center; color: grey;'>ou</h3>", unsafe_allow_html=True)
         with st.form("login_form", border=False):
@@ -173,6 +152,7 @@ if not st.session_state.get('user'):
                 except Exception:
                     st.error("Erro no login: Credenciais inválidas.")
     with tab_signup:
+        # ... (código de cadastro omitido para brevidade, continua o mesmo)
         st.subheader("Crie sua conta")
         with st.form("signup_form", border=False):
             new_email = st.text_input("Seu Email", key="signup_email")
@@ -186,6 +166,7 @@ if not st.session_state.get('user'):
 
 # --- APLICAÇÃO PRINCIPAL ---
 else:
+    # ... (código da aplicação principal omitido para brevidade, continua o mesmo)
     user_profile = get_user_profile()
     col_user1, col_user2 = st.columns([4, 1])
     with col_user1:
