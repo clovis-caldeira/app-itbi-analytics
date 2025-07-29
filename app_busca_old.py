@@ -296,11 +296,11 @@ def tela_autenticacao():
         try:
             # Primeiro, tentar obter do secrets do Streamlit
             supabase_url = st.secrets["SUPABASE_URL"]
-            site_url = st.secrets.get("SITE_URL", "http://localhost:8501")
+            site_url = st.secrets.get("SITE_URL", "https://pmivvwtqllcspjwnxzuc.supabase.co")
         except (KeyError, FileNotFoundError):
             # Fallback para variáveis de ambiente se secrets não estiver disponível
             supabase_url = os.getenv("SUPABASE_URL")
-            site_url = os.getenv("SITE_URL", "http://localhost:8501")
+            site_url = os.getenv("SITE_URL", "https://pmivvwtqllcspjwnxzuc.supabase.co")
         
         # Verificar se conseguimos obter a URL
         if not supabase_url:
