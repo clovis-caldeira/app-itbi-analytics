@@ -1,4 +1,4 @@
-# app_busca.py (Versão 6.0 - Solução Definitiva com Gerenciador de Sessão Otimizado)
+# app_busca.py (Versão 7.0 - Solução Definitiva com Componente JavaScript)
 
 import streamlit as st
 import pandas as pd
@@ -9,6 +9,7 @@ import unicodedata
 import re
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
+import streamlit.components.v1 as components
 
 # --- 0. CONFIGURAÇÃO INICIAL DA PÁGINA ---
 st.set_page_config(layout="wide", page_title="eXatas ITBI - Análise Imobiliária", page_icon="assets/icon.png")
@@ -103,52 +104,46 @@ def buscar_dados(_db: Client, **kwargs):
 
 # --- 3. LAYOUT E LÓGICA DA APLICAÇÃO ---
 
-# --- INÍCIO DA ATUALIZAÇÃO: Gerenciador de Sessão Definitivo ---
-def handle_session():
-    """
-    Verifica a sessão do usuário. Lida com o callback do OAuth e com sessões existentes.
-    Esta função deve ser a PRIMEIRA coisa a rodar.
-    """
-    # Se o usuário já está logado, não faz nada.
-    if 'user' in st.session_state:
-        return
-
-    # Se há um token de erro do Supabase na URL
-    if st.query_params.get("error"):
-        st.error(f"Erro de autenticação: {st.query_params.get('error_description')}")
-        st.query_params.clear()
-        return
-
-    # Se há um token de acesso na URL (callback do OAuth)
-    if st.query_params.get("access_token"):
-        access_token = st.query_params.get("access_token")
-        refresh_token = st.query_params.get("refresh_token")
-        try:
-            # Tenta estabelecer a sessão com os tokens da URL
-            session = supabase.auth.set_session(access_token, refresh_token)
-            if session and session.user:
-                st.session_state.user = session.user.dict()
-                st.query_params.clear() # Limpa a URL
-                st.rerun() # Força o recarregamento já logado
-        except Exception as e:
-            st.error(f"Erro ao validar sessão: {e}")
-            st.query_params.clear()
-        return
-    
-    # Se não há token na URL, verifica se há uma sessão guardada
+# Gerenciador de Sessão
+def check_user_session():
     try:
         session = supabase.auth.get_session()
         if session and session.user:
             st.session_state.user = session.user.dict()
+        else:
+            st.session_state.user = None
     except Exception:
         st.session_state.user = None
 
-# Executa o gerenciador de sessão
-handle_session()
-# --- FIM DA ATUALIZAÇÃO ---
+# Executa o gerenciador no início de cada recarga
+check_user_session()
 
-# --- TELA DE LOGIN (se a sessão não foi estabelecida) ---
+# --- TELA DE LOGIN ---
 if not st.session_state.get('user'):
+    # --- INÍCIO DA ATUALIZAÇÃO: Componente JavaScript ---
+    # Este componente usa a biblioteca Supabase.js para lidar com o login OAuth no navegador.
+    supabase_url = st.secrets["SUPABASE_URL"]
+    supabase_key = st.secrets["SUPABASE_KEY"]
+    site_url = st.secrets["SITE_URL"]
+
+    supabase_js_component = f"""
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script>
+        const supabase = supabase.createClient('{supabase_url}', '{supabase_key}');
+        
+        // Listener para eventos de autenticação
+        supabase.auth.onAuthStateChange((event, session) => {{
+            // Se o evento for um login bem-sucedido e a URL contiver o hash
+            if (event === 'SIGNED_IN' && window.location.hash) {{
+                // Redireciona para a URL limpa para que o Streamlit possa recarregar e pegar a sessão.
+                window.location.href = '{site_url}';
+            }}
+        }});
+    </script>
+    """
+    components.html(supabase_js_component, height=0)
+    # --- FIM DA ATUALIZAÇÃO ---
+
     st.title("Bem-vindo à eXatas ITBI")
     st.markdown("A plataforma de inteligência para o mercado imobiliário.")
     
@@ -157,10 +152,7 @@ if not st.session_state.get('user'):
     with tab_login:
         st.subheader("Acesse sua conta")
         
-        supabase_url = st.secrets["SUPABASE_URL"]
-        redirect_url = st.secrets["SITE_URL"]
-        google_auth_url = f"{supabase_url}/auth/v1/authorize?provider=google&redirect_to={redirect_url}"
-        
+        google_auth_url = f"{supabase_url}/auth/v1/authorize?provider=google&redirect_to={site_url}"
         st.link_button("Entrar com o Google", url=google_auth_url, use_container_width=True)
 
         st.markdown("<h3 style='text-align: center; color: grey;'>ou</h3>", unsafe_allow_html=True)
