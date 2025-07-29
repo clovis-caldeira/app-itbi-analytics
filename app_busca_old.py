@@ -170,3 +170,248 @@ if 'resultados_busca' in st.session_state:
 
     elif st.session_state.get('last_button_press', False):
         st.info("Nenhum resultado encontrado para os filtros informados.")
+
+# --- 4. SISTEMA DE AUTENTICAÇÃO ---
+
+def check_user_session():
+    """Verifica e processa a sessão do usuário."""
+    query_params = dict(st.query_params)
+    
+    # Processar callback do Google OAuth
+    if "access_token" in query_params:
+        access_token = query_params["access_token"]
+        refresh_token = query_params.get("refresh_token", "")
+        
+        try:
+            # Definir a sessão no Supabase
+            if refresh_token:
+                session_response = supabase.auth.set_session(access_token, refresh_token)
+            else:
+                session_response = supabase.auth.get_user(access_token)
+            
+            if session_response and session_response.user:
+                st.session_state.user = session_response.user.dict()
+                st.session_state.authenticated = True
+                st.query_params.clear()
+                st.success("✅ Login realizado com sucesso!")
+                st.rerun()
+                return True
+                
+        except Exception as e:
+            st.error(f"❌ Erro ao processar login: {e}")
+    
+    # Verificar sessão existente
+    try:
+        session = supabase.auth.get_session()
+        if session and session.user:
+            if 'user' not in st.session_state:
+                st.session_state.user = session.user.dict()
+                st.session_state.authenticated = True
+            return True
+        else:
+            st.session_state.user = None
+            st.session_state.authenticated = False
+            return False
+    except Exception as e:
+        st.session_state.user = None
+        st.session_state.authenticated = False
+        return False
+
+def login_com_email_senha(email, password):
+    """Faz login com email e senha."""
+    try:
+        response = supabase.auth.sign_in_with_password({
+            "email": email,
+            "password": password
+        })
+        
+        if response.user:
+            st.session_state.user = response.user.dict()
+            st.session_state.authenticated = True
+            st.success("✅ Login realizado com sucesso!")
+            st.rerun()
+            return True
+        else:
+            st.error("❌ Credenciais inválidas")
+            return False
+            
+    except Exception as e:
+        st.error(f"❌ Erro no login: {e}")
+        return False
+
+def cadastrar_usuario(email, password, nome):
+    """Cadastra um novo usuário."""
+    try:
+        response = supabase.auth.sign_up({
+            "email": email,
+            "password": password,
+            "options": {
+                "data": {
+                    "nome": nome
+                }
+            }
+        })
+        
+        if response.user:
+            st.success("✅ Cadastro realizado! Verifique seu email para confirmar a conta.")
+            return True
+        else:
+            st.error("❌ Erro no cadastro")
+            return False
+            
+    except Exception as e:
+        st.error(f"❌ Erro no cadastro: {e}")
+        return False
+
+def logout_usuario():
+    """Faz logout do usuário."""
+    try:
+        supabase.auth.sign_out()
+        st.session_state.user = None
+        st.session_state.authenticated = False
+        st.success("✅ Logout realizado com sucesso!")
+        st.rerun()
+    except Exception as e:
+        st.error(f"❌ Erro no logout: {e}")
+
+def tela_autenticacao():
+    """Exibe a tela de autenticação."""
+    st.title("🔐 Acesso ao Sistema")
+    st.markdown("Faça login ou cadastre-se para acessar a ferramenta de análise imobiliária.")
+    
+    # Verificar callback do Google
+    query_params = dict(st.query_params)
+    if query_params:
+        st.info("🔄 Processando login do Google...")
+        if check_user_session():
+            return
+    
+    # Tabs para Login e Cadastro
+    tab_login, tab_cadastro = st.tabs(["🔑 Login", "📝 Cadastro"])
+    
+    with tab_login:
+        st.subheader("Entrar na sua conta")
+        
+        # CORREÇÃO: Usar st.secrets corretamente
+        try:
+            # Primeiro, tentar obter do secrets do Streamlit
+            supabase_url = st.secrets["SUPABASE_URL"]
+            site_url = st.secrets.get("SITE_URL", "http://localhost:8501")
+        except (KeyError, FileNotFoundError):
+            # Fallback para variáveis de ambiente se secrets não estiver disponível
+            supabase_url = os.getenv("SUPABASE_URL")
+            site_url = os.getenv("SITE_URL", "http://localhost:8501")
+        
+        # Verificar se conseguimos obter a URL
+        if not supabase_url:
+            st.error("❌ Erro: URL do Supabase não configurada nos secrets.")
+            st.info("Configure SUPABASE_URL nos secrets do Streamlit.")
+            return
+        
+        # Botão Google OAuth
+        google_auth_url = f"{supabase_url}/auth/v1/authorize?provider=google&redirect_to={site_url}"
+        
+        # Debug: Mostrar URLs configuradas (remover em produção)
+        with st.expander("🔍 Configurações (Debug)"):
+            st.write(f"**Supabase URL:** {supabase_url}")
+            st.write(f"**Site URL:** {site_url}")
+            st.write(f"**Google Auth URL:** {google_auth_url}")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            st.link_button("🔐 Entrar com Google", url=google_auth_url, use_container_width=True)
+        with col2:
+            if st.button("🔄 Verificar Sessão", use_container_width=True):
+                check_user_session()
+        
+        st.divider()
+        
+        # Login com email/senha
+        with st.form("form_login"):
+            st.markdown("**Ou entre com email e senha:**")
+            email = st.text_input("📧 Email")
+            password = st.text_input("🔒 Senha", type="password")
+            
+            if st.form_submit_button("🔑 Entrar", use_container_width=True):
+                if email and password:
+                    login_com_email_senha(email, password)
+                else:
+                    st.warning("⚠️ Preencha todos os campos")
+    
+    with tab_cadastro:
+        st.subheader("Criar nova conta")
+        
+        with st.form("form_cadastro"):
+            nome = st.text_input("👤 Nome Completo")
+            email = st.text_input("📧 Email")
+            password = st.text_input("🔒 Senha", type="password")
+            password_confirm = st.text_input("🔒 Confirmar Senha", type="password")
+            
+            if st.form_submit_button("📝 Criar Conta", use_container_width=True):
+                if not all([nome, email, password, password_confirm]):
+                    st.warning("⚠️ Preencha todos os campos")
+                elif password != password_confirm:
+                    st.error("❌ As senhas não coincidem")
+                elif len(password) < 6:
+                    st.error("❌ A senha deve ter pelo menos 6 caracteres")
+                else:
+                    cadastrar_usuario(email, password, nome)
+    
+    # Debug (apenas em desenvolvimento)
+    with st.expander("🔍 Debug (Desenvolvimento)"):
+        st.write("**Query Params:**", query_params)
+        st.write("**Session State:**", {
+            "authenticated": st.session_state.get("authenticated", False),
+            "user": bool(st.session_state.get("user"))
+        })
+        
+        # Debug: Verificar se secrets estão carregados
+        st.write("**Secrets disponíveis:**", list(st.secrets.keys()) if hasattr(st, 'secrets') else "Nenhum")
+
+def sidebar_usuario():
+    """Exibe informações do usuário na sidebar."""
+    if st.session_state.get("authenticated") and st.session_state.get("user"):
+        user = st.session_state.user
+        
+        st.sidebar.success(f"✅ Logado como: **{user.get('email', 'Usuário')}**")
+        
+        # Informações do usuário
+        if user.get('user_metadata', {}).get('nome'):
+            st.sidebar.write(f"👤 **Nome:** {user['user_metadata']['nome']}")
+        
+        if user.get('user_metadata', {}).get('full_name'):
+            st.sidebar.write(f"👤 **Nome:** {user['user_metadata']['full_name']}")
+        
+        # Botão de logout
+        if st.sidebar.button("🚪 Sair", use_container_width=True):
+            logout_usuario()
+    else:
+        st.sidebar.info("🔒 Você não está logado")
+
+# --- 5. CONTROLE PRINCIPAL DA APLICAÇÃO ---
+
+# Verificar sessão no início
+if 'authenticated' not in st.session_state:
+    st.session_state.authenticated = False
+
+# Verificar se está logado
+is_logged_in = check_user_session()
+
+# Mostrar sidebar do usuário
+sidebar_usuario()
+
+# Controlar exibição de conteúdo
+if not is_logged_in:
+    # Esconder conteúdo principal e mostrar tela de login
+    st.markdown("""
+    <style>
+    .main > div:first-child {
+        display: none;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
+    tela_autenticacao()
+else:
+    # Usuário logado - conteúdo já exibido acima
+    st.sidebar.success("🎉 Acesso liberado!")
