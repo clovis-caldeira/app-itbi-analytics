@@ -1,4 +1,4 @@
-# app_busca.py (Versão 5.6 - Construção Manual da URL de Login)
+# app_busca.py (Versão 5.7 - Gerenciador de Sessão OAuth)
 
 import streamlit as st
 import pandas as pd
@@ -31,6 +31,7 @@ def init_supabase_connection() -> Client:
 
 supabase = init_supabase_connection()
 
+# ... (Todas as outras funções de dados como get_user_profile, buscar_dados, etc. continuam aqui, sem alterações)
 def get_user_profile():
     user_id = st.session_state.user.get('id')
     if user_id:
@@ -102,11 +103,31 @@ def buscar_dados(_db: Client, **kwargs):
         st.error(f"Erro na busca: {e}")
         return pd.DataFrame()
 
+
 # --- 3. LAYOUT E LÓGICA DA APLICAÇÃO ---
+
+# --- INÍCIO DA ATUALIZAÇÃO: Gerenciador de Sessão ---
+# Tenta obter o token da URL. O Supabase o coloca aqui após o redirect do Google.
+query_params = st.query_params
+access_token = query_params.get("access_token")
+
+# Se encontrarmos um token, tentamos estabelecer a sessão
+if access_token and 'user' not in st.session_state:
+    try:
+        # Define a sessão usando o token da URL
+        user_session = supabase.auth.set_session(access_token, query_params.get("refresh_token"))
+        st.session_state.user = user_session.user.dict()
+        # Limpa os parâmetros da URL para não ficarem visíveis
+        st.query_params.clear()
+        st.rerun() # Recarrega a página já logado
+    except Exception as e:
+        st.error(f"Ocorreu um erro ao tentar validar sua sessão: {e}")
+# --- FIM DA ATUALIZAÇÃO ---
 
 if 'user' not in st.session_state:
     st.session_state.user = None
 
+# --- TELA DE LOGIN ---
 if st.session_state.user is None:
     st.title("Bem-vindo à eXatas ITBI")
     st.markdown("A plataforma de inteligência para o mercado imobiliário.")
@@ -116,14 +137,11 @@ if st.session_state.user is None:
     with tab_login:
         st.subheader("Acesse sua conta")
         
-        # --- CORREÇÃO APLICADA AQUI ---
-        # Construímos a URL de login manualmente, o que é mais robusto
         supabase_url = st.secrets["SUPABASE_URL"]
         redirect_url = st.secrets["SITE_URL"]
         google_auth_url = f"{supabase_url}/auth/v1/authorize?provider=google&redirect_to={redirect_url}"
         
         st.link_button("Entrar com o Google", url=google_auth_url, use_container_width=True)
-        # --- FIM DA CORREÇÃO ---
 
         st.markdown("<h3 style='text-align: center; color: grey;'>ou</h3>", unsafe_allow_html=True)
         with st.form("login_form", border=False):
@@ -147,7 +165,8 @@ if st.session_state.user is None:
                     st.success("Cadastro realizado! Verifique seu e-mail para confirmar a conta.")
                 except Exception as e:
                     st.error(f"Erro no cadastro: {e}")
-else: # Usuário está logado
+# --- APLICAÇÃO PRINCIPAL (SÓ APARECE SE ESTIVER LOGADO) ---
+else:
     user_profile = get_user_profile()
 
     col_user1, col_user2 = st.columns([4, 1])
@@ -158,6 +177,7 @@ else: # Usuário está logado
         st.write(f"Plano: **{user_profile.get('plano', 'N/A').capitalize()}**")
         if st.button("Sair", use_container_width=True):
             st.session_state.user = None
+            st.query_params.clear() # Limpa a URL ao sair
             st.rerun()
 
     pode_buscar, msg_limite = check_search_limit(user_profile)
@@ -186,7 +206,7 @@ else: # Usuário está logado
         res_iniciais = st.session_state.get('resultados_busca')
         if res_iniciais is not None and not res_iniciais.empty:
             st.header("📊 Resultados da Busca")
-            st.info(f"Busca encontrou **{len(res_iniciais)}** resultados (limitado a 1000).")
+            st.info(f"Busca encontrou **{len(res_iniciais)}** resultados (limitado aos 1000 mais recentes).")
             st.markdown("###### Refine sua busca:")
             cols = sorted(res_iniciais.columns)
             col_filtro = st.selectbox("Filtrar por coluna:", options=cols)
