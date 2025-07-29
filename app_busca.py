@@ -1,4 +1,4 @@
-# app_busca.py (Versão 5.1 - Tela de Login Profissional com OAuth)
+# app_busca.py (Versão 5.2 - Correção Definitiva do Login com Google)
 
 import streamlit as st
 import pandas as pd
@@ -31,7 +31,7 @@ def init_supabase_connection() -> Client:
         supabase_key = os.getenv("SUPABASE_KEY")
 
     if not supabase_url or not supabase_key:
-        st.error("ERRO: Credenciais do Supabase não configuradas. Verifique seus secrets ou o arquivo .env")
+        st.error("ERRO: Credenciais do Supabase não configuradas.")
         st.stop()
         
     return create_client(supabase_url, supabase_key)
@@ -119,22 +119,25 @@ def buscar_dados(_supabase_client, nome_rua: str = None, cep: str = None, numero
 if 'user' not in st.session_state:
     st.session_state.user = None
 
-# --- NOVA TELA DE LOGIN ---
+# --- TELA DE LOGIN ---
 if st.session_state.user is None:
-    # Adicione seu logo aqui, se tiver um, na pasta assets
-    # st.image("assets/logo.png", width=200) 
     st.title("Bem-vindo à eXatos ITBI")
     st.markdown("A plataforma de inteligência para o mercado imobiliário.")
 
-    # Sistema de Abas
     tab_login, tab_signup = st.tabs(["Entrar", "Cadastrar"])
 
     with tab_login:
         st.subheader("Acesse sua conta")
-        # Botão de Login com Google (exemplo, requer configuração no Supabase)
-        if st.button("Entrar com o Google", use_container_width=True):
-             # A biblioteca Supabase cuidará do redirecionamento
-            supabase.auth.sign_in_with_oauth({"provider": "google"})
+
+        # --- INÍCIO DA CORREÇÃO ---
+        # 1. Pede ao Supabase a URL de login do Google
+        auth_url_response = supabase.auth.get_sign_in_with_oauth_url(
+            provider="google",
+            options={"redirect_to": st.secrets["SITE_URL"]} # Usa a URL do seu site configurada nos Secrets
+        )
+        # 2. Usa um link_button para redirecionar o usuário para a URL correta
+        st.link_button("Entrar com o Google", url=auth_url_response.url, use_container_width=True)
+        # --- FIM DA CORREÇÃO ---
 
         st.markdown("<h3 style='text-align: center; color: grey;'>ou</h3>", unsafe_allow_html=True)
 
@@ -200,7 +203,6 @@ else:
 
     st.divider()
 
-    # Lógica para executar e exibir a busca
     if buscar_btn:
         if nome_rua_input or cep_input:
             with st.spinner("Buscando dados..."):
