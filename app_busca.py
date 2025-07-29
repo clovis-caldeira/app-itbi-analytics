@@ -143,7 +143,32 @@ if not st.session_state.get('user'):
         
         # --- INÍCIO DA ATUALIZAÇÃO ---
         # Usamos st.markdown com HTML/JS para forçar o redirecionamento no navegador
-        if st.button("Entrar com o Google", use_container_width=True):
+        #if st.button("Entrar com o Google", use_container_width=True):
+        # Substitua o st.link_button("Entrar com o Google", ...) por esta linha:
+         if st.markdown(f'<a href="{google_auth_url}" target="_top" class="button">Entrar com o Google</a>', unsafe_allow_html=True)
+
+# Para estilizar o link como um botão, você pode adicionar CSS
+            st.markdown("""
+            <style>
+            .button {
+                background-color: #FF4B4B; /* Cor do botão primário do Streamlit */
+                color: white;
+                padding: 0.5rem 1rem;
+                border-radius: 0.5rem;
+                text-decoration: none;
+                display: inline-block;
+                text-align: center;
+                width: 100%;
+                border: none;
+                cursor: pointer;
+            }
+            .button:hover {
+                background-color: #FF6B6B;
+                color: white;
+            }
+            </style>
+            """, unsafe_allow_html=True)
+                    
             res = supabase.auth.sign_in_with_oauth({
                 "provider": "google",
                 "options": { "redirect_to": st.secrets["SITE_URL"] }
