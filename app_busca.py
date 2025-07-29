@@ -1,4 +1,4 @@
-# app_busca.py (Versão 8.0 - Solução Definitiva com Callback Page)
+# app_busca.py (Versão 9.0 - Solução Definitiva com Fluxo PKCE)
 
 import streamlit as st
 import pandas as pd
@@ -17,7 +17,6 @@ st.set_page_config(layout="wide", page_title="eXatas ITBI - Análise Imobiliári
 
 @st.cache_resource
 def init_supabase_connection() -> Client:
-    # ... (esta função continua igual)
     try:
         supabase_url = st.secrets["SUPABASE_URL"]
         supabase_key = st.secrets["SUPABASE_KEY"]
@@ -106,8 +105,29 @@ def buscar_dados(_db: Client, **kwargs):
 
 # --- 3. LAYOUT E LÓGICA DA APLICAÇÃO ---
 
-# Gerenciador de Sessão Simplificado
-def check_user_session():
+# --- INÍCIO DA ATUALIZAÇÃO: Gerenciador de Sessão para PKCE ---
+def handle_session():
+    """Gerencia a sessão do usuário, lidando com o callback do fluxo PKCE."""
+    # Se o usuário já está logado, não faz nada.
+    if 'user' in st.session_state and st.session_state.user is not None:
+        return
+
+    # Se há um código de autorização na URL (retorno do Google)
+    if st.query_params.get("code"):
+        code = st.query_params.get("code")
+        try:
+            # Troca o código pela sessão do usuário
+            session = supabase.auth.exchange_code_for_session({"auth_code": code})
+            if session and session.user:
+                st.session_state.user = session.user.dict()
+                st.query_params.clear() # Limpa a URL
+                st.rerun() # Recarrega a página já logado
+        except Exception as e:
+            st.error(f"Erro ao validar sessão: {e}")
+            st.query_params.clear()
+        return
+    
+    # Se não, tenta recuperar uma sessão existente
     try:
         session = supabase.auth.get_session()
         if session and session.user:
@@ -117,8 +137,9 @@ def check_user_session():
     except Exception:
         st.session_state.user = None
 
-# Executa o gerenciador no início de cada recarga
-check_user_session()
+# Executa o gerenciador de sessão no início de cada recarga
+handle_session()
+# --- FIM DA ATUALIZAÇÃO ---
 
 # --- TELA DE LOGIN ---
 if not st.session_state.get('user'):
@@ -131,13 +152,16 @@ if not st.session_state.get('user'):
         st.subheader("Acesse sua conta")
         
         # --- ATUALIZAÇÃO FINAL ---
-        # A URL agora aponta para o Supabase, que irá redirecionar para nossa página callback.html
-        supabase_url = st.secrets["SUPABASE_URL"]
-        callback_url = "https://SEU_USUARIO.github.io/SEU_REPOSITORIO/callback.html" # SUBSTITUA PELA SUA URL
-        google_auth_url = f"{supabase_url}/auth/v1/authorize?provider=google&redirect_to={callback_url}"
+        # A URL agora aponta para o Supabase, que irá iniciar o fluxo PKCE
+        if st.button("Entrar com o Google", use_container_width=True):
+            # Gera a URL de autorização para o fluxo PKCE
+            res = supabase.auth.sign_in_with_oauth({
+                "provider": "google",
+                "options": { "redirect_to": st.secrets["SITE_URL"] }
+            })
+            # Redireciona o usuário para a URL do Google
+            st.switch_page(res.url)
         # --- FIM DA ATUALIZAÇÃO ---
-        
-        st.link_button("Entrar com o Google", url=google_auth_url, use_container_width=True)
 
         st.markdown("<h3 style='text-align: center; color: grey;'>ou</h3>", unsafe_allow_html=True)
         with st.form("login_form", border=False):
