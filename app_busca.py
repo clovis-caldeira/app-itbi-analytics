@@ -1,4 +1,4 @@
-# app_busca.py (Versão 5.2 - Correção Definitiva do Login com Google)
+# app_busca.py (Versão 5.3 - Correção Final do Nome da Função OAuth)
 
 import streamlit as st
 import pandas as pd
@@ -15,7 +15,7 @@ from dateutil.relativedelta import relativedelta
 st.set_page_config(
     layout="wide",
     page_title="eXatos ITBI - Análise Imobiliária",
-    page_icon="assets/icon.png" 
+    page_icon="assets/icon.png"
 )
 
 # --- 1. FUNÇÕES DE AUTENTICAÇÃO E DADOS ---
@@ -31,13 +31,14 @@ def init_supabase_connection() -> Client:
         supabase_key = os.getenv("SUPABASE_KEY")
 
     if not supabase_url or not supabase_key:
-        st.error("ERRO: Credenciais do Supabase não configuradas.")
+        st.error("ERRO: Credenciais do Supabase não configuradas. Verifique seus secrets ou o arquivo .env")
         st.stop()
-        
+
     return create_client(supabase_url, supabase_key)
 
 supabase = init_supabase_connection()
 
+# ... (todas as outras funções de dados como get_user_profile, check_search_limit, etc. continuam aqui, sem alterações)
 def get_user_profile():
     """Busca o perfil do usuário logado no banco de dados."""
     user_id = st.session_state.user.get('id')
@@ -112,7 +113,6 @@ def buscar_dados(_supabase_client, nome_rua: str = None, cep: str = None, numero
     except Exception as e:
         st.error(f"Ocorreu um erro durante a busca: {e}")
         return pd.DataFrame()
-
 # --- 3. LAYOUT E LÓGICA DA APLICAÇÃO ---
 
 # Inicializa o session_state
@@ -128,15 +128,16 @@ if st.session_state.user is None:
 
     with tab_login:
         st.subheader("Acesse sua conta")
-
+        
         # --- INÍCIO DA CORREÇÃO ---
-        # 1. Pede ao Supabase a URL de login do Google
-        auth_url_response = supabase.auth.get_sign_in_with_oauth_url(
+        # 1. Gera a URL de login do Google
+        # A função correta na v2 da biblioteca é "sign_in_with_oauth"
+        provider_response = supabase.auth.sign_in_with_oauth(
             provider="google",
-            options={"redirect_to": st.secrets["SITE_URL"]} # Usa a URL do seu site configurada nos Secrets
+            options={"redirect_to": st.secrets["SITE_URL"]}
         )
         # 2. Usa um link_button para redirecionar o usuário para a URL correta
-        st.link_button("Entrar com o Google", url=auth_url_response.url, use_container_width=True)
+        st.link_button("Entrar com o Google", url=provider_response.url, use_container_width=True)
         # --- FIM DA CORREÇÃO ---
 
         st.markdown("<h3 style='text-align: center; color: grey;'>ou</h3>", unsafe_allow_html=True)
@@ -145,7 +146,7 @@ if st.session_state.user is None:
             email = st.text_input("Email")
             password = st.text_input("Senha", type="password")
             st.form_submit_button("Entrar com Email", use_container_width=True, on_click=lambda: setattr(st.session_state, 'login_attempt', {'email': email, 'password': password}))
-    
+
     if 'login_attempt' in st.session_state and st.session_state.login_attempt:
         try:
             user_session = supabase.auth.sign_in_with_password(st.session_state.login_attempt)
@@ -174,6 +175,7 @@ if st.session_state.user is None:
 
 # --- APLICAÇÃO PRINCIPAL (SÓ APARECE SE ESTIVER LOGADO) ---
 else:
+    # (O resto do código da aplicação principal continua aqui, sem alterações)
     user_profile = get_user_profile()
 
     col_user1, col_user2 = st.columns([4, 1])
