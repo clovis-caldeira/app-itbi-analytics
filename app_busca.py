@@ -1,4 +1,4 @@
-# app_busca.py (Versão 5.4 - Correção Final do Login com Google)
+# app_busca.py (Versão 5.5 - Correção Final de Argumento OAuth)
 
 import streamlit as st
 import pandas as pd
@@ -11,7 +11,7 @@ from datetime import datetime
 from dateutil.relativedelta import relativedelta
 
 # --- 0. CONFIGURAÇÃO INICIAL DA PÁGINA ---
-st.set_page_config(layout="wide", page_title="eXatos ITBI - Análise Imobiliária", page_icon="assets/icon.png")
+st.set_page_config(layout="wide", page_title="eXatas ITBI - Análise Imobiliária", page_icon="assets/icon.png")
 
 # --- 1. FUNÇÕES DE AUTENTICAÇÃO E DADOS ---
 
@@ -108,7 +108,7 @@ if 'user' not in st.session_state:
     st.session_state.user = None
 
 if st.session_state.user is None:
-    st.title("Bem-vindo à eXatos ITBI")
+    st.title("Bem-vindo à eXatas ITBI")
     st.markdown("A plataforma de inteligência para o mercado imobiliário.")
     
     tab_login, tab_signup = st.tabs(["Entrar", "Cadastrar"])
@@ -118,8 +118,8 @@ if st.session_state.user is None:
         
         # --- CORREÇÃO APLICADA AQUI ---
         provider_response = supabase.auth.sign_in_with_oauth(
-            "google", # O nome do provedor é o primeiro argumento, sem a palavra-chave 'provider'
-            options={"redirect_to": st.secrets["SITE_URL"]}
+            "google",
+            {"redirect_to": st.secrets["SITE_URL"]} # Passa as opções diretamente
         )
         st.link_button("Entrar com o Google", url=provider_response.url, use_container_width=True)
         # --- FIM DA CORREÇÃO ---
